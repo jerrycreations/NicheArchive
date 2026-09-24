@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isActivePath } from "./navigation";
+import { isActivePath, videoPath } from "./navigation";
+
+describe("videoPath", () => {
+  it("links to the video's page by its YouTube ID", () => {
+    expect(videoPath("dQw4w9WgXcQ")).toBe("/videos/dQw4w9WgXcQ");
+  });
+});
 
 describe("isActivePath", () => {
   it.each([

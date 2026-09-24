@@ -366,7 +366,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 6: Library and adding videos (build order 2)
 
-- [ ] Step 14: YouTube metadata service
+- [x] Step 14: YouTube metadata service
   - **Task**: Write `fetchVideoMetadata(youtubeId)`. It calls YouTube Data API v3 `videos.list` with `part=snippet,contentDetails,status` and a `fields` filter to keep the response small. It returns `{ youtubeId, title, channel, durationSeconds, publishedAt, privacyStatus, liveBroadcastContent }`.
     - Map failures to typed errors:
       - empty `items`: `not_found` ("This video is private or has been deleted")
@@ -382,8 +382,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/youtube/__fixtures__/videos-list.json`: sample responses
   - **Step Dependencies**: Step 3
   - **User Instructions**: In Google Cloud Console, create a project, enable **YouTube Data API v3**, create an **API key** under **Credentials**, restrict it to that API, and set it as `YOUTUBE_API_KEY`.
+  - **Done with a result instead of throwing, and both error formats**: `fetchVideoMetadata` never throws, like `fetchCaptions`. It returns `{ ok: true, video }` or `{ ok: false, error, detail }`, where `detail` is for the server log.
+    - Google now reports an invalid key as a generic `badRequest` in `errors[]` plus `API_KEY_INVALID` in `details[]`, so `classifyApiError` reads reasons from both. `bad_key` also covers a key restricted to other APIs, the API not being enabled, and a blank `YOUTUBE_API_KEY`. The key is read through `envPick`, so adding videos works while the Gemini keys are blank.
+    - Two more kinds: `network` (a failed fetch or the 10-second timeout) and `unexpected` (5xx, a body that isn't JSON, or an item that fails the Zod parse).
+    - The key goes in the `X-Goog-Api-Key` header rather than `?key=`, so it never shows up in logged URLs. The fixtures also cover the old `keyInvalid` format, a key blocked for this API and a disabled API.
+    - Checked live on 2026-09-24 against the YouTube API: a normal video, a made-up ID (`not_found`), a live news stream and a blank key.
 
-- [ ] Step 15: Video queries and the add-video action
+- [x] Step 15: Video queries and the add-video action
   - **Task**: Write the video data layer:
     - `getVideoByYoutubeId`, `getVideoById`, `listVideos({ sort })` (sort by `added` or `published`)
     - `insertVideo`: uses `on conflict (youtube_id) do nothing returning`, so a race between two adds becomes `already_exists`
@@ -404,8 +409,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/actions/videos.ts`: `addVideo`
   - **Step Dependencies**: Steps 8, 11, 14
   - **User Instructions**: None
+  - **Done with card-sized list rows and a renamed delete query**: the query is `deleteVideoByYoutubeId`, so it doesn't clash with the `deleteVideo` action, and it returns whether a row was deleted.
+    - `listVideos` selects only the card's columns (`VideoListItem` in `lib/db/types.ts`), so the grid never loads transcripts. It adds `chatCount`, a correlated `db().$count(...)` that keeps the grid to one query, for Step 18's dialog. `processingStartedAt` is included for Step 22's `effectiveStatus`.
+    - `addVideo` looks for a saved copy before calling YouTube, so re-adding costs no quota. `invalid_url` carries the parser's reason, with messages from `urlFailureMessage` in `lib/youtube/url.ts`, and `added` carries the title for the toast.
+    - `bad_key`, `network` and `unexpected` become `error { message }`, and the detail is logged. A thrown database error returns a generic message through `unexpectedError` in `lib/actions/result.ts`, which also defines `ActionError`.
+    - `VIDEO_SORTS` lives in `lib/validation/video.ts` for Step 44. `lib/navigation.ts` gained `videoPath(youtubeId)`, and `lib/youtube/url.ts` gained `isVideoId`.
+    - The actions check no session (see "No passcode"). The queries also ran against PGlite with the real migrations in a throwaway check: a duplicate insert returns null, both sort orders, chat counts and the cascade delete.
 
-- [ ] Step 16: Add-video form and long-video confirmation
+- [x] Step 16: Add-video form and long-video confirmation
   - **Task**: Build the client form used in the top-bar dialog and on the empty library page. It shows each `addVideo` outcome:
     - Inline errors for an invalid URL, a private or deleted video, and live or upcoming streams.
     - `already_exists`: "You already saved this video" with a link to `/videos/<id>`.
@@ -420,8 +431,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/layout/add-video-dialog.tsx`: mount the form
   - **Step Dependencies**: Steps 13, 15
   - **User Instructions**: None
+  - **Done without `router.refresh()` and with nested transitions**: in Next 16, a server action that calls `revalidatePath` sends the re-rendered current route in the same response, so a refresh after `added` would be a second round trip.
+    - React 19 doesn't count updates made after an `await` as part of the surrounding transition, so they commit before `isPending` turns false. The form wraps them in a second `startTransition`. Without it, the confirmation panel mounted with its buttons still disabled, and Add anyway couldn't take focus.
+    - The input is controlled, with `type="text"` and `inputMode="url"`, because `type="url"` rejects links without `https://` and bare IDs. The browser runs `parseYouTubeUrl` first for instant feedback, and the server checks again. The field is read-only while a request is in flight.
+    - `onDone` closes the dialog after an add and when the "Open it" link for a saved video is followed. The dialog lives in the layout, so it would otherwise stay open across navigation. Add anyway gets focus and is described by the message; Cancel puts focus back in the field.
+    - `formatDurationWords` in `lib/time.ts` gives "1 hour 16 minutes". The dialog is `sm:max-w-md` to fit long links.
 
-- [ ] Step 17: Library page, grid and cards
+- [x] Step 17: Library page, grid and cards
   - **Task**: Build the library page as a server component that lists videos newest first.
     - Each card shows the thumbnail from `buildThumbnailUrl` (`next/image` with `unoptimized` and lazy loading, `aspect-video object-cover`), the duration over the thumbnail, the title limited to two lines, the channel, the date added and a transcript status badge.
     - Badge: plain neutral "Transcript ready", or colored with the Step 6 tokens for "Processing" and "Failed".
@@ -438,8 +454,12 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/format/date.ts`: date formatting helpers
   - **Step Dependencies**: Steps 15, 16
   - **User Instructions**: None
+  - **Done with `connection()`, `LocalDate` and a stretched link**: the page calls `await connection()`. With `cacheComponents` off, database reads don't make a route dynamic, so without it `next build` would render the library once, at build time.
+    - Dates go through `components/common/local-date.tsx`. The server and hydration render UTC, then `useSyncExternalStore` re-renders in the viewer's time zone, so a video added on a US evening doesn't show tomorrow's date. `lib/format/date.ts` has `formatDate(value, timeZone?)`.
+    - The title's link stretches over the card (`after:absolute after:inset-0`) instead of wrapping it, so Step 18's menu button isn't nested inside a link. The card shows an outline while its link has keyboard focus.
+    - `VideoGridSkeleton` and `VideoCardSkeleton` share the real grid and card shapes. Checked live: 1, 2, 3 and 4 columns at 438, 700, 1100 and 1400 px wide, in both themes.
 
-- [ ] Step 18: Delete a video
+- [x] Step 18: Delete a video
   - **Task**: Add the `deleteVideo(youtubeId)` action. It relies on the cascading foreign keys, so the transcript, chunks, video chats and their messages go in one statement. It then revalidates `/library`.
     - The confirm dialog names the video and lists what will be removed: "its transcript, its search index and N chats about it". The number comes from `countChatsForVideo`.
     - After deleting, go to `/library` if the user is on that video's page.
@@ -453,6 +473,11 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/library/video-card.tsx`: add the menu
   - **Step Dependencies**: Step 17
   - **User Instructions**: None
+  - **Done with the chat count from the list and a focus fix**: the dialog's chat count comes from `listVideos` rather than a separate `countChatsForVideo` call, which Step 27's video page will make. The wording drops the chats clause when there are none and says "1 chat" for one.
+    - A video that's already gone counts as deleted. The dialog stays open while deleting and after a failure, which also shows a toast.
+    - Radix has no trigger to return focus to, so `onCloseAutoFocus` focuses the ⋮ button, as in Step 13. After a delete from the library the card is gone, so focus falls back to the page.
+    - On the video's own page the dialog replaces the URL with `/library` inside a transition, so the page's not-found render shouldn't flash. Re-check this in Step 27.
+    - The dialog is rendered beside the dropdown menu rather than inside it. Checked live that the page still takes clicks after it closes, and that Escape returns focus to the ⋮ button.
 
 ---
 

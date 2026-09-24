@@ -21,6 +21,22 @@ export type ParsedYouTubeUrl =
   | { ok: true; id: string }
   | { ok: false; reason: YouTubeUrlFailure };
 
+const FAILURE_MESSAGES: Record<YouTubeUrlFailure, string> = {
+  empty: "Paste a YouTube link first.",
+  not_youtube: "That isn't a YouTube link.",
+  no_video_id: "That YouTube link doesn't point to a video.",
+};
+
+/** What to tell the user when parseYouTubeUrl() rejects their input. */
+export function urlFailureMessage(reason: YouTubeUrlFailure): string {
+  return FAILURE_MESSAGES[reason];
+}
+
+/** Whether `value` is shaped like a YouTube video ID: 11 URL-safe characters. */
+export function isVideoId(value: string): boolean {
+  return VIDEO_ID.test(value);
+}
+
 /**
  * Extracts the video ID from any common YouTube link (watch, youtu.be, Shorts,
  * embed, live, mobile, music, no-cookie), with or without a protocol and

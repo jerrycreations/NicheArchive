@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatDuration,
+  formatDurationWords,
   formatTimestamp,
   parseIso8601Duration,
   parseTimestamp,
@@ -58,6 +59,32 @@ describe("formatDuration and formatTimestamp", () => {
     expect(formatTimestamp(-5)).toBe("0:00");
     expect(formatTimestamp(Number.NaN)).toBe("0:00");
     expect(formatDuration(Number.POSITIVE_INFINITY)).toBe("0:00");
+  });
+});
+
+describe("formatDurationWords", () => {
+  it.each([
+    [0, "less than a minute"],
+    [29, "less than a minute"],
+    [30, "1 minute"],
+    [60, "1 minute"],
+    [125, "2 minutes"],
+    [1801, "30 minutes"],
+    [2820, "47 minutes"],
+    [2849, "47 minutes"],
+    [3599, "1 hour"],
+    [3600, "1 hour"],
+    [3660, "1 hour 1 minute"],
+    [4320, "1 hour 12 minutes"],
+    [7200, "2 hours"],
+    [7290, "2 hours 2 minutes"],
+  ])("describes %i seconds as %s", (seconds, text) => {
+    expect(formatDurationWords(seconds)).toBe(text);
+  });
+
+  it("treats negative and non-finite input as no time", () => {
+    expect(formatDurationWords(-60)).toBe("less than a minute");
+    expect(formatDurationWords(Number.NaN)).toBe("less than a minute");
   });
 });
 

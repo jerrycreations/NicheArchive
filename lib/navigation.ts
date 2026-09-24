@@ -11,3 +11,8 @@ export const NAV_ITEMS = [
 export function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
+
+/** The page for one saved video, e.g. `/videos/dQw4w9WgXcQ`. */
+export function videoPath(youtubeId: string): string {
+  return `/videos/${youtubeId}`;
+}

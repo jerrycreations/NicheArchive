@@ -2,6 +2,7 @@
 
 import { PlusIcon } from "lucide-react";
 import { createContext, use, useRef, useState } from "react";
+import { AddVideoForm } from "@/components/library/add-video-form";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -49,6 +50,7 @@ export function AddVideoDialogProvider({ children }: { children: React.ReactNode
       {children}
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogContent
+          className="sm:max-w-md"
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             openerRef.current?.focus();
@@ -60,8 +62,8 @@ export function AddVideoDialogProvider({ children }: { children: React.ReactNode
               Paste a YouTube link to save it with its transcript.
             </DialogDescription>
           </DialogHeader>
-          {/* Step 16 replaces this with the add-video form. */}
-          <p className="text-muted-foreground">Adding videos isn&apos;t ready yet.</p>
+          {/* The dialog outlives page changes, so the form closes it when it's done. */}
+          <AddVideoForm onDone={() => setIsOpen(false)} />
         </DialogContent>
       </Dialog>
     </AddVideoDialogContext>

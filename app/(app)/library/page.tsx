@@ -1,15 +1,30 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
+import { EmptyLibrary } from "@/components/library/empty-library";
+import { VideoGrid } from "@/components/library/video-grid";
+import { listVideos } from "@/lib/db/queries/videos";
 
 export const metadata: Metadata = {
   title: "Library",
 };
 
-// Placeholder until Step 17 builds the video grid.
-export default function LibraryPage() {
+export default async function LibraryPage() {
+  // Database reads don't make a page dynamic on their own, so without this
+  // `next build` would render the library once, at build time.
+  await connection();
+  const videos = await listVideos();
+
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
-      <p className="text-muted-foreground">Your saved videos will appear here.</p>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-baseline gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+        {videos.length > 0 && (
+          <p className="text-sm text-muted-foreground">
+            {videos.length === 1 ? "1 video" : `${videos.length} videos`}
+          </p>
+        )}
+      </div>
+      {videos.length === 0 ? <EmptyLibrary /> : <VideoGrid videos={videos} />}
     </div>
   );
 }

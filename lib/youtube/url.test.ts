@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildThumbnailUrl, buildWatchUrl, parseYouTubeUrl } from "./url";
+import {
+  buildThumbnailUrl,
+  buildWatchUrl,
+  isVideoId,
+  parseYouTubeUrl,
+  urlFailureMessage,
+} from "./url";
 
 const ID = "dQw4w9WgXcQ";
 
@@ -102,6 +108,34 @@ describe("parseYouTubeUrl", () => {
   it("does not treat bare strings of the wrong length as IDs", () => {
     expect(parseYouTubeUrl("dQw4w9WgXc").ok).toBe(false);
     expect(parseYouTubeUrl("dQw4w9WgXcQX").ok).toBe(false);
+  });
+});
+
+describe("isVideoId", () => {
+  it.each([ID, "a-b_c1D2e3F"])("accepts %s", (value) => {
+    expect(isVideoId(value)).toBe(true);
+  });
+
+  it.each([
+    "",
+    "dQw4w9WgXc",
+    "dQw4w9WgXcQX",
+    "dQw4w9WgXc!",
+    ` ${ID}`,
+    `${ID}\n`,
+    `https://youtu.be/${ID}`,
+  ])("rejects %j", (value) => {
+    expect(isVideoId(value)).toBe(false);
+  });
+});
+
+describe("urlFailureMessage", () => {
+  it.each([
+    ["empty", "Paste a YouTube link first."],
+    ["not_youtube", "That isn't a YouTube link."],
+    ["no_video_id", "That YouTube link doesn't point to a video."],
+  ] as const)("explains %s", (reason, message) => {
+    expect(urlFailureMessage(reason)).toBe(message);
   });
 });
 

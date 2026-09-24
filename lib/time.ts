@@ -33,6 +33,26 @@ export function formatDuration(seconds: number): string {
   return formatClock(seconds);
 }
 
+/**
+ * A length in words, rounded to the nearest minute: `47 minutes`,
+ * `1 hour 12 minutes`, `2 hours`. Under half a minute is `less than a minute`.
+ */
+export function formatDurationWords(seconds: number): string {
+  const totalMinutes =
+    Number.isFinite(seconds) && seconds > 0 ? Math.round(seconds / 60) : 0;
+  if (totalMinutes === 0) return "less than a minute";
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const parts = [];
+  if (hours > 0) parts.push(countOf(hours, "hour"));
+  if (minutes > 0) parts.push(countOf(minutes, "minute"));
+  return parts.join(" ");
+}
+
+function countOf(count: number, unit: string): string {
+  return `${count} ${unit}${count === 1 ? "" : "s"}`;
+}
+
 /** A moment in a video as `m:ss` or `h:mm:ss`. Fractions of a second are dropped. */
 export function formatTimestamp(seconds: number): string {
   return formatClock(seconds);

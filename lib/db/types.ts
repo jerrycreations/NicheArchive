@@ -10,6 +10,24 @@ import type {
 export type VideoRow = Omit<typeof videos.$inferSelect, "searchVector">;
 export type NewVideo = typeof videos.$inferInsert;
 
+/**
+ * A video as the library grid shows it: no transcript, so listing hundreds
+ * stays small, plus how many chats are about it (deleting the video deletes
+ * them too).
+ */
+export type VideoListItem = Pick<
+  VideoRow,
+  | "id"
+  | "youtubeId"
+  | "title"
+  | "channel"
+  | "durationSeconds"
+  | "publishedAt"
+  | "createdAt"
+  | "status"
+  | "processingStartedAt"
+> & { chatCount: number };
+
 export type TranscriptChunkRow = Omit<
   typeof transcriptChunks.$inferSelect,
   "searchVector"
