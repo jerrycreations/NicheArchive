@@ -141,7 +141,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 2: Design system
 
-- [ ] Step 6: shadcn/ui, theme and dark mode
+- [x] Step 6: shadcn/ui, theme and dark mode
   - **Task**: Set up shadcn/ui with the **neutral** base color and install the components the app needs.
     - Add `next-themes`: `attribute="class"`, `defaultTheme="system"`, `enableSystem`.
     - Add a theme toggle: a dropdown with Light, Dark and System, sun and moon icons, and an accessible label.
@@ -158,6 +158,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/ui/*`: generated shadcn components (listed in User Instructions)
   - **Step Dependencies**: Step 1
   - **User Instructions**: Run `npx shadcn@latest init` and choose the **Neutral** base color. Then run `npx shadcn@latest add button input textarea card badge dialog alert-dialog dropdown-menu select tabs skeleton sonner tooltip separator scroll-area sheet command popover toggle-group progress`, followed by `npm i next-themes lucide-react`.
+  - **Done with shadcn CLI 4.21**: The CLI no longer asks for a base color. It uses presets instead, so init ran as `npx shadcn@latest init --preset nova --base radix`. `nova` is the neutral preset with Lucide icons and Geist. `radix` keeps Radix primitives and `asChild`, which the Sheet and Command-in-Popover recipes in later steps assume.
+    - `cn` now comes from shadcn's `cn` package, which replaces `clsx` and `tailwind-merge`. `lib/utils.ts` re-exports it, and the generated components import it directly.
+    - `add` also generated `toggle.tsx` and `input-group.tsx`, which `toggle-group` and `command` depend on. `TooltipProvider` is mounted in the root layout, because Radix tooltips need it.
+    - The unused sidebar and chart tokens are removed. The dark sidebar token was blue.
+    - The card's `ring-1` edge is now a `border`, so every edge uses the `--border` token. Overlays such as menus and sheets keep their small shadows.
+    - Status tokens: amber-800 and red-700 in light, amber-400 and red-400 in dark. Each keeps at least 4.5:1 contrast as text, including over a 15% tint of itself (`bg-status-failed/15 text-status-failed`). They are exposed as `status-processing` and `status-failed` Tailwind colors.
+    - The theme provider sets the no-flash script's `type` to `text/plain` on the client, as Next's "Preventing flash before hydration" guide recommends, so React doesn't warn about rendered `<script>` tags. It also sets `disableTransitionOnChange`.
 
 ---
 
