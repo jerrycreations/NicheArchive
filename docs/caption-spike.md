@@ -5,10 +5,8 @@ Build order step 1 in the spec, plan Step 5. This measures how often the caption
 ## How to run it
 
 1. **Local:** run `npm run dev`, open <http://localhost:3000/dev/captions>, paste the URLs below one per line and select **Run**. Copy each row into the **Local** columns.
-2. **Deployed:** use a **preview** deployment. The route returns `404` in production, because nothing protects it until the passcode arrives in Step 12. Vercel's default Deployment Protection covers preview URLs, so only you can open them. To get a preview:
-   - run `npx vercel` (without `--prod`), or
-   - with the GitHub repo connected, push a branch other than `main` and open its preview URL.
-3. Open `<preview URL>/dev/captions`, run the same list and fill in the **Deployed** columns. The footer shows the region the function ran in.
+2. **Deployed:** since Step 12 the page and route sit behind the passcode, so any deployment works, production included. Set `APP_PASSCODE` and `AUTH_SECRET` in Vercel first, deploy (`npx vercel`, or push with the GitHub repo connected), and unlock the site once.
+3. Open `<deployment URL>/dev/captions`, run the same list and fill in the **Deployed** columns. The footer shows the region the function ran in.
 
 Result values:
 

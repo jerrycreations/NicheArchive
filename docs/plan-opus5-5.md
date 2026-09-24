@@ -283,7 +283,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 4: Access
 
-- [ ] Step 11: Passcode session library
+- [x] Step 11: Passcode session library
   - **Task**: Write the shared-passcode session using Web Crypto only, so it runs in any runtime.
     - `verifyPasscode(input)`: compare HMAC digests of the input and `APP_PASSCODE`, so the comparison takes constant time and lengths don't leak.
     - The session token is `base64url(payload).base64url(signature)`. The payload is `{ iat, pv }`, where `pv` is a short hash of `APP_PASSCODE`, so changing the passcode signs out every device. The signature is HMAC-SHA256 with `AUTH_SECRET`.
@@ -298,8 +298,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/auth/session.test.ts`: token cases
   - **Step Dependencies**: Step 2
   - **User Instructions**: Set `APP_PASSCODE` to the passcode you and your friend will share. Set `AUTH_SECRET` to a random string of at least 32 characters (`openssl rand -base64 32`). Add both to `.env.local` now and to Vercel later.
+  - **Done with a keyed passcode version and `withSession`**: `pv` is the first 8 bytes of `HMAC(AUTH_SECRET, "passcode-version:" + APP_PASSCODE)`, not a plain hash. The payload is readable by anyone holding the cookie, and a plain hash of a short passcode could be brute-forced offline. Changing either `APP_PASSCODE` or `AUTH_SECRET` signs out every device.
+    - HMAC and base64url live in `lib/auth/crypto.ts`, which uses only Web Crypto and `btoa`/`atob` (Node 22 has no `Uint8Array.toBase64`). Every comparison goes through `crypto.subtle.verify`, which is constant-time. Each MAC is labelled (`passcode`, `passcode-version`, `session`), so a MAC made for one purpose never verifies for another.
+    - `verifyPasscode` trims its input, because the env schema trims `APP_PASSCODE`. `verifySessionToken` checks the signature before parsing anything, allows 60 seconds of clock drift, and throws, rather than failing open, when either key is missing.
+    - The expiry is fixed at 30 days from unlocking; visits don't extend it.
+    - The route helper is `withSession(handler)`, used as `export const POST = withSession(async (request) => ...)`. It answers `401` JSON through `unauthorizedResponse()`, and other errors, such as missing env keys, still throw. Server actions call `requireSession()` directly.
+    - Besides `session.test.ts`, there are `passcode.test.ts` and `require-session.test.ts`, the latter with `next/headers` mocked.
 
-- [ ] Step 12: Proxy, unlock page and no-indexing
+- [x] Step 12: Proxy, unlock page and no-indexing
   - **Task**: Add `proxy.ts` with a matcher that skips `_next/static`, `_next/image`, `favicon.ico` and other static files.
     - Allow `/unlock` and `/api/cron/*` without a session.
     - Without a valid session, page requests redirect to `/unlock?next=<path>` and `/api/*` requests get `401` JSON.
@@ -317,6 +323,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/api/dev/captions/route.ts`: add `requireSession()`
   - **Step Dependencies**: Steps 6, 10, 11
   - **User Instructions**: Restart the dev server. Check that `/library` redirects to `/unlock`, that a wrong passcode shows the error, and that the right one gets through and still works after closing and reopening the browser.
+  - **Done with a stricter `next` check and the spike opened to production**: `safeNextPath` (`lib/auth/next-path.ts`) also rejects a leading `/\` (browsers read `/\host` as `//host`), control characters (browsers drop tabs and newlines) and `/unlock` itself. It returns the normalized path, so `/library/../unlock` falls back too. The page sanitizes `next` before putting it in the form, and the action sanitizes it again.
+    - Besides `_next/static`, `_next/image` and `favicon.ico`, the matcher skips `robots.txt`, so crawlers can read it, and image extensions. There's no `public/` folder yet.
+    - Next 16.3's test helper is still named `unstable_doesMiddlewareMatch`. `proxy.test.ts` uses it for the matcher and calls `proxy()` with a `NextRequest` for the branches. `app/actions/auth.test.ts` covers the 500 ms delay with fake timers and checks the redirect targets.
+    - The spike route is wrapped in `withSession`, and its `VERCEL_ENV === "production"` 404 is gone, so `docs/caption-spike.md` now allows any deployment.
+    - The error text uses the `destructive` token, which also colours the input's `aria-invalid` ring. React 19 clears the password field after a failed attempt, and the form puts the cursor back in it.
+    - `.env.example` and the README advise a long passphrase, since the 500 ms delay is the only brake on guessing. The README has a new "Access" section.
+    - `/library` doesn't exist until Step 13, so unlocking with the default `next` lands on a 404 for now. To check the right passcode now, use `/dev/captions`.
 
 ---
 

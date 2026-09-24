@@ -22,6 +22,8 @@ export const metadata: Metadata = {
   },
   description:
     "A private archive of YouTube videos and their transcripts, with Gemini Q&A.",
+  // Private site: keep every page out of search results (see also app/robots.ts).
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

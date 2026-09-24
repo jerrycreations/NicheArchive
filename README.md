@@ -41,7 +41,7 @@ Set these in `.env.local` for development and in **Vercel → Project → Settin
 | --- | --- | --- |
 | `DATABASE_URL` | The app's database connection | Supabase → **Connect** → **Transaction pooler** (port 6543) |
 | `DATABASE_MIGRATION_URL` | `drizzle-kit` migrations only | Supabase → **Connect** → **Session pooler** (port 5432) |
-| `APP_PASSCODE` | The shared passcode that unlocks the site | You choose it. Changing it signs out every device. |
+| `APP_PASSCODE` | The shared passcode that unlocks the site | You choose it. Make it a long passphrase, since there's no lockout. Changing it signs out every device. |
 | `AUTH_SECRET` | Signs the session cookie (at least 32 characters) | `openssl rand -base64 32` |
 | `YOUTUBE_API_KEY` | Video metadata (YouTube Data API v3) | Google Cloud Console → enable **YouTube Data API v3** → **Credentials** → API key |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini chat, transcription and embeddings | Google AI Studio → **Get API key** |
@@ -58,6 +58,12 @@ Without `openssl`, generate a secret with Node:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+
+## Access
+
+`proxy.ts` sends any device without a valid `na_session` cookie to `/unlock`, and API requests without one get `401` JSON. Only `/unlock` and `/api/cron/*` are open. The cookie is signed with `AUTH_SECRET`, lasts 30 days, and stops working when `APP_PASSCODE` or `AUTH_SECRET` changes.
+
+The proxy isn't the only check. Every server action calls `requireSession()`, and every route handler except the cron is wrapped in `withSession()`. Both live in [lib/auth/require-session.ts](lib/auth/require-session.ts). A server action is posted to whichever page uses it, so a matcher change could leave it outside the proxy.
 
 ## Database migrations
 
