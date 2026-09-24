@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { actionError } from "@/lib/actions/result";
 import { videoPath } from "@/lib/navigation";
+import { requestTranscript } from "@/lib/transcript/client";
 import { parseYouTubeUrl } from "@/lib/youtube/url";
 
 /**
@@ -46,6 +47,10 @@ export function AddVideoForm({ onDone }: { onDone?: () => void }) {
         // Thrown rather than returned, e.g. a dropped connection.
         result = actionError("Couldn't reach the server. Try again.");
       }
+
+      // Start on the transcript without waiting. If this request is lost, the
+      // library's status watcher starts it the next time the library is open.
+      if (result.kind === "added") void requestTranscript(result.youtubeId);
 
       // Updates after an await need their own transition to commit together
       // with `pending` turning false. Otherwise the confirmation panel mounts

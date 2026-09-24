@@ -1,5 +1,6 @@
 // Why a YouTube Data API lookup failed, and what to tell the user. Holds no
 // secrets or server code, so client components import the messages too.
+import { API_KEY_REASONS, errorMessage, errorReasons } from "@/lib/google/error-body";
 
 export const YOUTUBE_ERROR_KINDS = [
   "not_found",
@@ -30,18 +31,14 @@ const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded"]);
 
 // Everything that means the key itself is the problem: invalid or expired,
 // restricted to other APIs, callers or referrers, or the API not enabled.
-const BAD_KEY_REASONS = new Set([
+// The first five are the Data API's older reasons.
+const BAD_KEY_REASONS = new Set<string>([
   "keyInvalid",
   "keyExpired",
   "forbidden",
   "accessNotConfigured",
   "ipRefererBlocked",
-  "API_KEY_INVALID",
-  "API_KEY_EXPIRED",
-  "API_KEY_SERVICE_BLOCKED",
-  "API_KEY_HTTP_REFERRER_BLOCKED",
-  "API_KEY_IP_ADDRESS_BLOCKED",
-  "SERVICE_DISABLED",
+  ...API_KEY_REASONS,
 ]);
 
 /** Sorts a failed Data API response into a kind, by the reasons in its error body. */
@@ -61,26 +58,6 @@ export function classifyApiError(status: number, body: unknown): YouTubeErrorKin
 
 /** A failed response in one line for the server logs, e.g. `HTTP 403 quotaExceeded: The request cannot…`. */
 export function describeApiError(status: number, body: unknown): string {
-  const error = isRecord(body) ? body.error : undefined;
-  const message = isRecord(error) && typeof error.message === "string" ? error.message : "";
+  const message = errorMessage(body) ?? "";
   return [`HTTP ${status}`, ...new Set(errorReasons(body))].join(" ") + (message && `: ${message}`);
-}
-
-/**
- * Google's error bodies carry reasons in two places: `error.errors[].reason`
- * in the older format, and ErrorInfo entries in `error.details[]` in the
- * current one. An invalid key now reads "badRequest" in the first and
- * "API_KEY_INVALID" in the second, so both are checked.
- */
-function errorReasons(body: unknown): string[] {
-  const error = isRecord(body) ? body.error : undefined;
-  if (!isRecord(error)) return [];
-  return [error.errors, error.details]
-    .flatMap((entries) => (Array.isArray(entries) ? entries : []))
-    .map((entry) => (isRecord(entry) ? entry.reason : undefined))
-    .filter((reason): reason is string => typeof reason === "string");
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }

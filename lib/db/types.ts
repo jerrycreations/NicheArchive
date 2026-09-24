@@ -13,7 +13,8 @@ export type NewVideo = typeof videos.$inferInsert;
 /**
  * A video as the library grid shows it: no transcript, so listing hundreds
  * stays small, plus how many chats are about it (deleting the video deletes
- * them too).
+ * them too). `status` is the effective one, so stalled processing reads as
+ * failed; `processingStartedAt` tells whether a pending video has been started.
  */
 export type VideoListItem = Pick<
   VideoRow,

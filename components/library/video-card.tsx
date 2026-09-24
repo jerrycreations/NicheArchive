@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { LocalDate } from "@/components/common/local-date";
 import { TranscriptStatusBadge } from "@/components/library/transcript-status-badge";
+import { RetryTranscriptButton } from "@/components/transcript/retry-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VideoActionsMenu } from "@/components/video/video-actions-menu";
 import type { VideoListItem } from "@/lib/db/types";
@@ -48,6 +49,14 @@ export function VideoCard({ video }: { video: VideoListItem }) {
           <p className="truncate text-sm text-muted-foreground">{video.channel}</p>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
             <TranscriptStatusBadge status={video.status} />
+            {video.status === "failed" && (
+              // Above the stretched title link, like the actions menu.
+              <RetryTranscriptButton
+                youtubeId={video.youtubeId}
+                size="xs"
+                className="relative z-10"
+              />
+            )}
             <span>
               Added <LocalDate value={video.createdAt} />
             </span>

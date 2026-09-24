@@ -483,7 +483,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 7: Transcripts
 
-- [ ] Step 19: Transcript text helpers and paste parsing
+- [x] Step 19: Transcript text helpers and paste parsing
   - **Task**: Write the pure text layer:
     - `segmentsToParagraphs(segments)`: starts a new paragraph when the gap between the end of one cue and the start of the next is at least `PARAGRAPH_GAP_SECONDS`. When a cue has no duration, use the gap between start times instead.
     - `segmentsToPlainText`: joins paragraphs with blank lines.
@@ -502,8 +502,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/transcript/parse-pasted.test.ts`: paste layout cases
   - **Step Dependencies**: Steps 3, 4
   - **User Instructions**: None
+  - **Done with a paragraph length cap and shared timing helpers**: at the user's choice, `segmentsToParagraphs` keeps the 2-second pause rule and also ends a paragraph at the first sentence end after `PARAGRAPH_MAX_SECONDS` (60), or at the next cue after twice that. Gemini and pasted segments run on to the next start, so they never pause, and overlapping auto-captions rarely do. Without the cap they'd copy and export as one long paragraph.
+    - `cleanCueText` returns null for a cue with nothing spoken in it: square-bracket labels of any length, parenthesized ones up to 20 characters (a longer aside in parentheses can be speech), music notes and punctuation. `cleanSegments` applies it and keeps the timings.
+    - `text.ts` also has `durationsFromStarts`, `estimateSpeechSeconds` (2.5 words a second), `countWords` and `endsSentence`, which the paste parser and Step 21's validator share. A last segment lasts as long as its words take to say, cut off at the end of the video.
+    - Paste layouts: a paste counts as timed when at least 2 lines start with a timestamp and those make up a quarter of its lines, so prose such as "10:30 is when…" stays plain text. A timestamp without brackets must be followed by a space, dash or colon, so "1:23pm" isn't one. Each timestamp's segment takes the rest of its line and the lines below it, which covers both timed layouts. Lines before the first timestamp, such as a title, are dropped.
+    - Untimed text is cut into groups that close at the first sentence end after 25 words, or at 60 words without punctuation, and each group is placed along the video by its word position. A paste with fewer than 20 words left after noise removal is rejected.
+    - `MAX_PASTED_TRANSCRIPT_CHARS` (500,000) in `lib/constants.ts` keeps a paste under Next's 1 MB limit on a server action's request.
 
-- [ ] Step 20: Gemini provider, models and AI errors
+- [x] Step 20: Gemini provider, models and AI errors
   - **Task**: Configure `createGoogleGenerativeAI({ apiKey })` from `@ai-sdk/google`.
     - `models.ts` exposes `chatModel()`, `rewriteModel()` and `embeddingModel()`, reading the model names from `env()`.
     - `errors.ts` has `classifyAiError(error)`, which returns one of:
@@ -523,8 +529,19 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/ai/errors.test.ts`: classifier cases
   - **Step Dependencies**: Step 2
   - **User Instructions**: Create a free API key in Google AI Studio and set it as `GOOGLE_GENERATIVE_AI_API_KEY`. Run `npm i ai @ai-sdk/google @ai-sdk/react`. Check the three model names in `.env.local` against AI Studio's current model list, because an outdated name only fails when it's called.
+  - **Done with AI SDK 7 and config errors**: the installed versions are `ai` 7.0.114, `@ai-sdk/google` 4.0.80 and `@ai-sdk/react` 4.0.117. Version 7 renames several things this plan assumed:
+    - `createGoogle`; the old `createGoogleGenerativeAI` is still exported as an alias.
+    - `instructions` instead of `system`.
+    - `generateText` with `output: Output.object({ schema })`, read from `result.output`. `generateObject` is deprecated.
+    - `google.embedding(id)`.
+    - `MockLanguageModelV4` and `MockEmbeddingModelV4` from `ai/test`.
 
-- [ ] Step 21: Gemini transcription
+    The provider's model list already includes `gemini-3.8-flash` and `gemini-3.5-flash-lite`.
+    - The provider and the model accessors read only their own keys through `envPick`, so the rest of the app works while the Gemini settings are blank. The provider is created on first use, like `db()`. A blank key or model name throws `AiConfigError`, which classifies as `bad_key` or `model_not_found`.
+    - `classifyAiError` looks through `RetryError` to the last attempt. It takes the retry delay from a `Retry-After` header or Google's `RetryInfo.retryDelay`. It checks API-key reasons before the generic 400, since an invalid key arrives as a 400 `INVALID_ARGUMENT`, and sorts other 400 and 403 refusals into `unsupported_input`.
+    - Google's error-body readers moved from `lib/youtube/errors.ts` to `lib/google/error-body.ts`, which also gained `errorStatus`, `errorMessage`, `retryDelaySeconds` and `API_KEY_REASONS`. The YouTube and Gemini classifiers both use it.
+
+- [x] Step 21: Gemini transcription
   - **Task**: Write `transcribeWithGemini({ youtubeId, durationSeconds })`. Call the chat model with the watch URL as a video file part and ask for structured output with a Zod schema: `{ segments: [{ start: "m:ss", text }] }`.
     - Prompt (kept in its own file): a word-for-word English transcript in segments of one or two sentences. Don't summarize, add speaker labels or describe sounds. Use temperature 0.
     - Ask for low media resolution through provider options if the installed provider supports it. Transcription only needs the audio, and this cuts token use a lot.
@@ -539,8 +556,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/ai/transcribe.test.ts`: mock-model success and failure
   - **Step Dependencies**: Steps 3, 4, 20
   - **User Instructions**: None
+  - **Done without temperature 0, and with the link as a URL**: temperature stays at the default. Google's Gemini 3 docs strongly recommend keeping it at 1.0 and warn that lower values can cause looping, which would ruin a long transcript.
+    - The watch link goes in as a `URL` object, because in AI SDK 7 a bare string in a file part is read as base64 data. The Google provider passes YouTube watch URLs to Gemini as `fileData` rather than downloading them. Low media resolution goes through `providerOptions.google.mediaResolution`; the provider has no fps option for cutting video tokens further.
+    - A 240-second abort signal leaves room in the processing route's 300 seconds for the caption attempt and the database writes.
+    - Besides the AI error kinds, a failure can be `invalid_output` (not JSON, or the wrong shape), `too_long` (cut off at the output limit), `timeout`, `no_speech` or `bad_timestamps`. Each has a message for the user and a detail for the log. A safety block comes back with no text, so `finishReason` is checked before reading `output`.
+    - The mock-model test gives the model `supportedUrls`, so the SDK doesn't try to download the watch page, and stubs `fetch` to fail.
+    - Not run against Gemini yet, because `GOOGLE_GENERATIVE_AI_API_KEY` is blank. Without the key, the Gemini stage fails with the bad-key message.
 
-- [ ] Step 22: Transcript pipeline and processing route
+- [x] Step 22: Transcript pipeline and processing route
   - **Task**: `resolveTranscript(video)` tries three stages in order and records why each one failed or was skipped:
     1. Captions (`manual_captions` or `auto_captions`).
     2. Gemini (`gemini`), only when `privacy_status` is `public`. Otherwise it's skipped with "Gemini can only transcribe public videos."
@@ -565,8 +588,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/db/queries/videos.ts`: `claimForProcessing`, `writeTranscript`, `markTranscriptFailed`
   - **Step Dependencies**: Steps 15, 19, 21
   - **User Instructions**: None
+  - **Done with the claim taken before the response, and fenced writes**: the route claims the video before answering, then runs the stages in `after()`. If the claim ran inside `after()`, a Retry followed by a refresh could still show the video as failed, with nothing watching it. The route answers `started` or `already_running` with 202, `ready` with 200 and `not_found` with 404.
+    - The claim time is a fencing token. `writeTranscript` and `markTranscriptFailed` only apply while `processing_started_at` still equals it, and both clear it. A paste writes without one, so a run that's still going can't overwrite pasted text, and a stalled run can't overwrite a newer retry. The claim time comes from the JavaScript clock rather than `now()`, because Postgres keeps microseconds and a JS `Date` doesn't, so a database value wouldn't compare equal after the round trip.
+    - Failing clears the claim, so Retry can start at once. A crash marks the video failed with a generic reason; if even that write fails, the 6-minute stall rule shows it as failed.
+    - `error_message` holds one line per stage, `Captions: …` and `Gemini: …`. `formatStageReasons` writes it and `parseStageReasons` reads it, both in `lib/transcript/status.ts`, which client components can import. Captions with only sound labels, such as Keyboard Cat's `[Applause] [Music]`, move on to Gemini.
+    - `maxDuration = 300` matches Vercel Hobby's limit with Fluid compute (Vercel docs, 2026-08). There's no session check (see "No passcode").
+    - Besides `status.test.ts`, there are `pipeline.test.ts` and a route test with `after` mocked. A throwaway PGlite check ran the real queries on the migrations: a claim taken only once and round-tripping to the millisecond, the stall boundary, a ready video never claimed, a stalled run's write dropped after a retry, a paste surviving a late run, and effective statuses.
 
-- [ ] Step 23: Status polling and retry
+- [x] Step 23: Status polling and retry
   - **Task**: `GET /api/videos/status?ids=a,b,c` returns `{ youtubeId, status (effective), source, errorMessage }[]`.
     - `TranscriptStatusWatcher` is a client component that receives the IDs of pending videos.
       - For any pending video with no claim, it calls the process route once. This covers a tab closed right after adding.
@@ -584,8 +613,18 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/(app)/library/page.tsx`: mount the watcher
   - **Step Dependencies**: Steps 16, 17, 22
   - **User Instructions**: None
+  - **Done with effective statuses from the query**: `listVideos` returns effective statuses, computed with `new Date()` in the query function, because the React Compiler's lint flags `Date` in render. It keeps `processingStartedAt`, so the watcher can tell which pending videos have started.
+    - `TranscriptStatusWatcher` takes `{ youtubeId, started }[]`. It remembers across refreshes which videos it has started, and restarts its polling only when the set of IDs changes. A video missing from the status response counts as finished. With no passcode, there's no 401 case.
+    - `requestTranscript` and `fetchTranscriptStatuses` in `lib/transcript/client.ts` never throw; they return null on failure. The add form calls `requestTranscript` without waiting, so right after an add both the form and the watcher may call the route. The claim turns the second call into `already_running`.
+    - `RetryTranscriptButton` refreshes in a second transition after its await, so "Retrying…" stays up until the refresh lands. The card's Retry sits beside the Failed badge with `relative z-10`, above the stretched title link.
+    - The status route takes up to 100 IDs, ignores repeats and answers with `Cache-Control: no-store`.
+    - Checked live against Supabase in a production build:
+      - A captioned video went from Processing to ready.
+      - A video whose captions were only sound labels failed with both stages' reasons, and Retry ran it again.
+      - A pending video with no claim was started by the watcher after a reload.
+      - A claim left 7 minutes old showed as Failed, and Retry took it over.
 
-- [ ] Step 24: Manual paste fallback
+- [x] Step 24: Manual paste fallback
   - **Task**: Build the failed-transcript panel, which Step 27 places on the video page.
     - It explains that automatic transcription didn't work, lists each stage's reason from `error_message`, and has a Retry button.
     - An "Open in youtubetotranscript.com" link opens that site in a new tab (`target="_blank" rel="noopener noreferrer"`). Build the link in `lib/youtube/links.ts`: use the site's page for this video if the URL pattern is confirmed, otherwise its home page. The app never sends requests to that site; the user copies the text by hand.
@@ -603,6 +642,9 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/youtube/links.ts`: YouTube watch link and youtubetotranscript.com link builders
   - **Step Dependencies**: Steps 19, 22
   - **User Instructions**: Open youtubetotranscript.com once with any video and note the URL it uses, so `lib/youtube/links.ts` can link straight to the right page.
+  - **Done with the site's home page and the video's link shown to copy**: the site's URL for a single video isn't confirmed yet, so `lib/youtube/links.ts` exports `TRANSCRIPT_SITE_URL`, its home page, and the panel shows the video's watch link to paste there. The watch-link builder stays `buildWatchUrl` in `lib/youtube/url.ts`.
+    - `savePastedTranscript` returns `saved`, `invalid_transcript { message }` or an `ActionError`. It writes without a claim and revalidates `/library` and the video's path. In Next 16 that re-renders the current page in the same response, so the form doesn't refresh. The form checks for an empty or oversized paste itself, because a paste over 1 MB would never reach the server.
+    - Checked live on a temporary page, since Step 27 mounts the panel: the reasons, Retry, the link's `target` and `rel`, the empty and too-short errors (the text is kept and focus returns to the box), and a timed paste saved as ready.
 
 ---
 
@@ -1063,6 +1105,7 @@ The spec leaves these open. Change any of them here before generating code.
       - the cascade delete removes a video's chunks, chats and messages
       - the chat check constraint rejects a video chat with no video
       - `hybrid_search` returns keyword-only, meaning-only and combined matches in the expected order, using small hand-made vectors
+      - `claimForProcessing` claims a video only once and again only after the stall limit, never claims a ready one, and `writeTranscript` and `markTranscriptFailed` are ignored once their claim is gone (added by Step 22, whose throwaway check covered this)
     - Add mocked tests for the caption adapter's result mapping.
     - Add `typecheck` (`tsc --noEmit`) and `test:coverage` scripts.
     - Add a GitHub Actions workflow that runs `npm ci`, lint, typecheck and tests on every push.

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { EmptyLibrary } from "@/components/library/empty-library";
 import { VideoGrid } from "@/components/library/video-grid";
+import { TranscriptStatusWatcher } from "@/components/transcript/status-watcher";
 import { listVideos } from "@/lib/db/queries/videos";
 
 export const metadata: Metadata = {
@@ -13,9 +14,16 @@ export default async function LibraryPage() {
   // `next build` would render the library once, at build time.
   await connection();
   const videos = await listVideos();
+  const processing = videos
+    .filter((video) => video.status === "pending")
+    .map((video) => ({
+      youtubeId: video.youtubeId,
+      started: video.processingStartedAt !== null,
+    }));
 
   return (
     <div className="flex flex-col gap-6">
+      <TranscriptStatusWatcher videos={processing} />
       <div className="flex items-baseline gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
         {videos.length > 0 && (

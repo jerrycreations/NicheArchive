@@ -13,6 +13,14 @@ export const CHUNK_MAX_SECONDS = 90;
 /** A pause this long between captions starts a new paragraph (spec: 2+ seconds). */
 export const PARAGRAPH_GAP_SECONDS = 2;
 
+/**
+ * Speech with no such pause (Gemini and pasted transcripts, overlapping
+ * auto-captions) starts a new paragraph at the first sentence end after this
+ * long, or anywhere after twice this long, since auto-captions have no
+ * punctuation.
+ */
+export const PARAGRAPH_MAX_SECONDS = 60;
+
 /** Chunks returned by hybrid search before they're grouped by video. */
 export const SEARCH_MATCH_COUNT = 30;
 
@@ -40,6 +48,12 @@ export const MAX_LIBRARY_CONTEXT_CHARS = 200_000;
 
 /** Processing that hasn't finished after this long is shown as failed, with a retry. */
 export const STALE_PROCESSING_MINUTES = 6;
+
+/**
+ * Longest pasted transcript accepted, several hours of speech. Keeps the
+ * paste under the 1 MB limit Next.js puts on a server action's request.
+ */
+export const MAX_PASTED_TRANSCRIPT_CHARS = 500_000;
 
 /** Exported .txt filenames are shortened to this many characters before the extension. */
 export const MAX_FILENAME_LENGTH = 120;
