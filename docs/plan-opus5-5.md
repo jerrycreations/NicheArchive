@@ -335,7 +335,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 5: App shell
 
-- [ ] Step 13: Top bar and app layout
+- [x] Step 13: Top bar and app layout
   - **Task**: Create the `app/(app)` route group, whose layout holds a sticky top bar and a centered, max-width content area with generous padding.
     - Top bar: the app name (linking to `/library`), Library and Chats links styled for the active route, an "Add video" button and the theme toggle.
     - Below `md`, the two links move into a small menu while "Add video" and the toggle stay visible.
@@ -351,6 +351,12 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/(app)/chats/page.tsx`: placeholder
   - **Step Dependencies**: Step 12
   - **User Instructions**: None
+  - **Done with shared nav items and a focus-return fix**: `lib/navigation.ts` holds `NAV_ITEMS` and the pure `isActivePath`, which both navs use, so `/chats/<id>` keeps Chats highlighted and `/libraryx` doesn't match `/library`. `lib/navigation.test.ts` covers it. Active links get `aria-current="page"`.
+    - The small-screen menu is a `DropdownMenu` with a check on the active link, not a sheet.
+    - `add-video-dialog.tsx` also exports `AddVideoButton`. `useAddVideoDialog()` returns `{ open, close }` and throws outside the provider; Step 16's form calls `close()` after `added`. The dialog body is a placeholder line until Step 16.
+    - The dialog has no `DialogTrigger`, and Radix then returns focus to a null trigger ref, so closing it would leave focus on `<body>`. `open()` remembers the focused element and `onCloseAutoFocus` puts focus back on it.
+    - The shell and the bar use `max-w-7xl`, which leaves room for the 4-column grid (Step 17) and the player-plus-chat layout (Step 27). The bar is `z-40`, below overlays. Below `sm` its gaps shrink to 4px so "NicheArchive" isn't truncated on 320px phones.
+    - Unlocking with the default `next` now lands on `/library`. `/unlock` and `/dev/captions` stay outside `(app)`, so they have no top bar.
 
 ---
 
