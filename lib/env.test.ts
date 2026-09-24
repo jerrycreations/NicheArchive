@@ -25,6 +25,10 @@ async function loadEnv() {
   return (await import("./env")).env;
 }
 
+async function loadEnvPick() {
+  return (await import("./env")).envPick;
+}
+
 beforeEach(() => {
   vi.resetModules();
 });
@@ -80,5 +84,30 @@ describe("env", () => {
     const first = env();
     vi.stubEnv("APP_PASSCODE", "");
     expect(env()).toBe(first);
+  });
+});
+
+describe("envPick", () => {
+  it("returns only the named keys and ignores other blank ones", async () => {
+    stubEnv({ YOUTUBE_API_KEY: "", GOOGLE_GENERATIVE_AI_API_KEY: "" });
+    const envPick = await loadEnvPick();
+    expect(envPick("DATABASE_URL", "CRON_SECRET")).toEqual({
+      DATABASE_URL: VALID.DATABASE_URL,
+      CRON_SECRET: VALID.CRON_SECRET,
+    });
+  });
+
+  it("names only the named keys that are missing or invalid", async () => {
+    stubEnv({ DATABASE_URL: "mysql://nope", CRON_SECRET: "", APP_PASSCODE: "" });
+    const envPick = await loadEnvPick();
+    let message = "";
+    try {
+      envPick("DATABASE_URL", "CRON_SECRET");
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain("DATABASE_URL must be a postgres:// connection string");
+    expect(message).toContain("CRON_SECRET is missing");
+    expect(message).not.toContain("APP_PASSCODE");
   });
 });

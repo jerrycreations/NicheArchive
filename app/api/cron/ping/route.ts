@@ -1,0 +1,26 @@
+// Daily keep-alive (vercel.json), so Supabase's free tier doesn't pause the
+// database after a week without activity.
+import { createHash, timingSafeEqual } from "node:crypto";
+import { sql } from "drizzle-orm";
+import { db } from "@/lib/db";
+import { envPick } from "@/lib/env";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  // Vercel sends this header on cron runs when CRON_SECRET is set.
+  const expected = `Bearer ${envPick("CRON_SECRET").CRON_SECRET}`;
+  if (!safeEqual(request.headers.get("authorization") ?? "", expected)) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await db().execute(sql`select 1`);
+  return Response.json({ ok: true, at: new Date().toISOString() });
+}
+
+// Compares digests so the check takes the same time whatever the input.
+function safeEqual(a: string, b: string) {
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(a), digest(b));
+}

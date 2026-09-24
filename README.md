@@ -28,6 +28,10 @@ npm run dev                  # http://localhost:3000
 | `npm run typecheck` | Generate Next's route types, then run `tsc` |
 | `npm test` | Unit tests, once |
 | `npm run test:watch` | Unit tests, re-run on change |
+| `npm run db:generate` | Write a migration from changes to `lib/db/schema.ts` |
+| `npm run db:custom` | Write an empty migration for hand-written SQL |
+| `npm run db:migrate` | Apply pending migrations to Supabase |
+| `npm run db:studio` | Browse the database in Drizzle Studio |
 
 ## Environment variables
 
@@ -54,3 +58,34 @@ Without `openssl`, generate a secret with Node:
 ```bash
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
+
+## Database migrations
+
+The schema lives in [lib/db/schema.ts](lib/db/schema.ts), and the migrations drizzle-kit writes from it live in `drizzle/`. `drizzle-kit` reads `.env.local` itself and connects through `DATABASE_MIGRATION_URL`, Supabase's session pooler. The app uses the transaction pooler, which can't run schema changes reliably.
+
+**Changing the schema:**
+
+1. Edit `lib/db/schema.ts`.
+2. Run `npm run db:generate -- --name=<what_changed>` and read the SQL it writes.
+3. Run `npm run db:migrate`.
+
+**Hand-written SQL** (extensions, functions and anything else Drizzle can't express):
+
+1. Run `npm run db:custom -- --name=<what_it_does>`. This creates an empty migration and records it in `drizzle/meta/`, so it runs in order with the rest.
+2. Write the SQL in the new file. Separate statements with `--> statement-breakpoint`.
+3. Run `npm run db:migrate`.
+
+Never edit a migration that has already been applied; add a new one. To change `hybrid_search`, for example, write a new custom migration with `create or replace function`.
+
+| Migration | What it does |
+| --- | --- |
+| `0000_enable_pgvector` | Enables pgvector in the `extensions` schema, before any table needs the `vector` type |
+| `0001_initial_schema` | The four tables, enums, indexes (GIN for keyword search, HNSW for embeddings) and row-level security |
+| `0002_hybrid_search` | The `hybrid_search` function: keyword and meaning ranks merged with Reciprocal Rank Fusion |
+
+Two things specific to Supabase:
+
+- pgvector lives in the `extensions` schema, which Supabase puts on every role's search path, so the migrations use `vector` without a schema prefix. `hybrid_search` pins its own search path.
+- Every table has row-level security on with no policies. That blocks Supabase's Data API, which exposes the `public` schema to the project's anon key. The app connects as the tables' owner, which RLS doesn't restrict. The app never uses the Data API, so you can also turn it off under **Project Settings → Data API**.
+
+If `npm run db:migrate` fails on the extension, enable **vector** under **Database → Extensions** in Supabase and run it again.

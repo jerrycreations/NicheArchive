@@ -170,7 +170,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 3: Database
 
-- [ ] Step 7: Drizzle and the Supabase connection
+- [x] Step 7: Drizzle and the Supabase connection
   - **Task**: Create the Drizzle client over postgres.js with `DATABASE_URL`, the transaction pooler, `prepare: false` and a small pool (`max: 1`) for serverless use.
     - Cache the client on `globalThis` in development so hot reloads don't leak connections.
     - `drizzle.config.ts` loads `.env.local` with `dotenv` and uses `DATABASE_MIGRATION_URL`.
@@ -189,8 +189,12 @@ The spec leaves these open. Change any of them here before generating code.
     1. Create a free Supabase project. For lower latency, choose the region closest to your Vercel function region (the Vercel default is Washington, D.C., which matches `us-east-1`).
     2. Open **Connect**. Copy the **Transaction pooler** URI (port 6543) into `DATABASE_URL` and the **Session pooler** URI (port 5432) into `DATABASE_MIGRATION_URL`, putting your database password into each.
     3. Run `npm i drizzle-orm postgres dotenv` and `npm i -D drizzle-kit`.
+  - **Done with Drizzle 0.45 (stable)**: `drizzle-orm` 0.45.3 and `drizzle-kit` 0.31.11 are npm's `latest` tags; 1.0 is still a release candidate. The 0.x migration layout (`drizzle/0000_*.sql` plus `drizzle/meta/_journal.json`) and `relations()` match this plan.
+    - `lib/env.ts` gained `envPick(...keys)`, which validates only the named keys and reports errors the same way. The database client and the Step 10 cron use it, so the keep-alive works as soon as the database URL and `CRON_SECRET` are set, even while the YouTube and Gemini keys are blank. `env()` is unchanged.
+    - The client is a lazy `db()` function rather than a module-level instance, because `next build` imports route modules without secrets. It also sets `ssl: "require"`. `.env.example` asks for `?sslmode=require` on `DATABASE_MIGRATION_URL`, since drizzle-kit only reads SSL settings from the URL.
+    - `npm audit` reports a moderate esbuild advisory through drizzle-kit's config loader. It concerns esbuild's dev server, which drizzle-kit never starts, and the package is dev-only.
 
-- [ ] Step 8: Schema, pgvector and the first migrations
+- [x] Step 8: Schema, pgvector and the first migrations
   - **Task**: Before creating any table, add a custom migration containing `create extension if not exists vector with schema extensions;`. The chunk table uses the `vector` type, so this must run first. Then define the schema:
     - **`videos`**:
       - `id`: uuid primary key
@@ -242,8 +246,15 @@ The spec leaves these open. Change any of them here before generating code.
     3. `npm run db:migrate`
 
     If the extension step fails, enable **vector** under **Database → Extensions** in Supabase and run the migration again. Check in **Table Editor** that the four tables exist.
+  - **Done with row-level security on every table**: each table calls `.enableRLS()` with no policies. Supabase's Data API exposes the `public` schema to the project's anon key, and tables made by migrations start with RLS off. The app connects as the tables' owner, which RLS doesn't restrict.
+    - The generated migration is `drizzle/0001_initial_schema.sql` (named with `--name=initial_schema`). Running `db:generate` a second time reports no changes, so the generated columns don't cause a perpetual diff.
+    - `0000_enable_pgvector.sql` also runs `create schema if not exists extensions`. That's a no-op on Supabase and lets the same file run on PGlite and plain Postgres. The later migrations use `vector` unqualified, relying on Supabase's search path, which includes `extensions`.
+    - `CHAT_MODES` and `MESSAGE_ROLES` live in `lib/chat/types.ts`, following `lib/transcript/types.ts`, so client components can use them without importing Drizzle. The role enum lists `user` first, and Postgres sorts enums in declaration order, so `order by created_at, role` puts a question before its answer when `saveExchange` gives both the same timestamp.
+    - `VideoRow` and `TranscriptChunkRow` leave out `searchVector`, so queries should select the other columns rather than `select *`. `MessageSourceVideo` is `{ index, youtubeId, title, channel, timestamps }`, with timestamps in seconds.
+    - drizzle-kit resolves the `@/` alias in `lib/db/schema.ts`, so no relative imports were needed.
+    - No Supabase project existed yet, so `db:migrate` hasn't run. All three migrations were instead applied to PGlite with pgvector in a throwaway script. It checked the generated columns and weights, the check constraint, the cascades, the unique position, the 768-dimension check, RLS and the `hybrid_search` ranking.
 
-- [ ] Step 9: Hybrid search SQL function
+- [x] Step 9: Hybrid search SQL function
   - **Task**: Add a custom migration that creates `hybrid_search(query_text text, query_embedding vector(768), match_count int, full_text_weight float default 1, semantic_weight float default 1, rrf_k int default 50)`. Base it on Supabase's hybrid search example:
     - A `full_text` CTE ranks chunks matching `websearch_to_tsquery('english', query_text)` by `ts_rank_cd`, returning up to `match_count * 2` rows.
     - A `semantic` CTE ranks chunks by `embedding <=> query_embedding`, also up to `match_count * 2` rows.
@@ -255,14 +266,18 @@ The spec leaves these open. Change any of them here before generating code.
     - `README.md`: a "Database migrations" section describing the custom-migration workflow
   - **Step Dependencies**: Step 8
   - **User Instructions**: Run `npm run db:custom -- --name=hybrid_search` (so Drizzle records the migration), put the SQL in the generated file, then run `npm run db:migrate`. Check that `hybrid_search` appears under **Database → Functions**.
+  - **Done with a pinned search path**: the function has `set search_path = public, extensions`, so `vector` and `<=>` resolve the same way for every caller, and Supabase's mutable-search-path lint stays quiet. Its `query_embedding` parameter is typed `extensions.vector(768)`.
+    - `keyword_rank` is the `ts_rank_cd` value, not the list position. Every output is cast to `float8` so the SQL function's return types match. Ties on `score` fall back to `similarity`, so the order is deterministic.
+    - Chunks are ranked on meaning with no cutoff, so while the library holds no more than `match_count * 2` chunks, every row has a `similarity`. Rows with a null `similarity` appear only once the semantic list is full, which is why Step 40's threshold checks the value, not whether it's null.
 
-- [ ] Step 10: Database keep-alive cron
+- [x] Step 10: Database keep-alive cron
   - **Task**: Add `GET /api/cron/ping`. It compares the `Authorization` header with `Bearer ${CRON_SECRET}` (Vercel sends this header automatically when `CRON_SECRET` is set), returns `401` if they differ, and otherwise runs `select 1` and returns `{ ok: true, at }`. Use `runtime = "nodejs"` and `dynamic = "force-dynamic"`. Register a daily cron in `vercel.json`, the schedule Hobby allows. This comes early so Supabase doesn't pause during development.
   - **Files**:
     - `app/api/cron/ping/route.ts`: authenticated keep-alive query
     - `vercel.json`: `crons` entry, e.g. `"0 12 * * *"`
   - **Step Dependencies**: Step 7
   - **User Instructions**: Set `CRON_SECRET` to a random string (for example `openssl rand -hex 32`) in `.env.local` and in Vercel's environment variables. After deploying, open **Vercel → Project → Settings → Cron Jobs**, check that the job is listed and run it once.
+  - **Done with a constant-time check and a route test**: the route compares SHA-256 digests with `timingSafeEqual` and reads only `CRON_SECRET` and `DATABASE_URL` (through `envPick`). `app/api/cron/ping/route.test.ts` mocks the database and covers a missing header, a wrong secret, a missing `Bearer` prefix, success, and success while unrelated keys are blank. `dynamic = "force-dynamic"` is still valid in Next 16, because `cacheComponents` is off.
 
 ---
 
@@ -1012,7 +1027,7 @@ The spec leaves these open. Change any of them here before generating code.
     - `package.json`: `typecheck`, `test:coverage`, `test:db` scripts
     - `.github/workflows/ci.yml`: lint, typecheck, tests
   - **Step Dependencies**: Step 48
-  - **User Instructions**: Run `npm i -D @electric-sql/pglite @vitest/coverage-v8`. Run `npm test`, `npm run test:db` and `npm run typecheck` locally and check that all three pass before pushing.
+  - **User Instructions**: Run `npm i -D @electric-sql/pglite @electric-sql/pglite-pgvector @vitest/coverage-v8`. Since PGlite 0.5, pgvector ships as its own package: `import { vector } from "@electric-sql/pglite-pgvector"`. Run `set search_path to "$user", public, extensions` before applying the migrations, as on Supabase. Run `npm test`, `npm run test:db` and `npm run typecheck` locally and check that all three pass before pushing.
 
 - [ ] Step 50: End-to-end smoke test (optional)
   - **Task**: Add one Playwright test for the main path against a seeded local database. It unlocks with the passcode, opens a seeded video, sees its transcript, clicks a timestamp, sends a video-chat message with the AI route stubbed, and downloads the single transcript. It intercepts every request to Google and YouTube, so it never uses quota or depends on the network.
