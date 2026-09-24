@@ -97,7 +97,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **Step Dependencies**: Step 1
   - **User Instructions**: Run `npm i -D vitest vite-tsconfig-paths`, then `npm test`, and check that the tests pass.
 
-- [ ] Step 4: Transcript types and the caption service
+- [x] Step 4: Transcript types and the caption service
   - **Task**: Define the shared transcript types:
     - `TranscriptSegment`: `{ start: number; duration: number; text: string }`, in seconds
     - `TranscriptSource`: `manual_captions | auto_captions | gemini | pasted`
@@ -117,8 +117,9 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/youtube/__fixtures__/caption-cues.json`: sample library output
   - **Step Dependencies**: Step 3
   - **User Instructions**: Run `npm i youtube-transcript`. Before relying on it, check that the package is still maintained and that it can tell manual tracks from auto-generated ones. If it can't, choose a maintained caption library that can. The adapter keeps that swap confined to one file.
+  - **Done with `youtube-transcript-plus`**: `youtube-transcript` 1.3.1 has no way to tell manual tracks from auto-generated ones and matches only the exact code `en`. The replacement exposes `kind: "asr"`, but it also picks tracks by language code alone, so `lib/youtube/captions.ts` intercepts the player response through `playerFetch` and leaves only the track it chose.
 
-- [ ] Step 5: Caption spike page (measures the main risk)
+- [x] Step 5: Caption spike page (measures the main risk)
   - **Task**: Build the throwaway test the spec's build order asks for first.
     - `POST /api/dev/captions` accepts up to 10 YouTube URLs. It runs `fetchCaptions` on them one after another and returns a row for each: the parsed ID, success, source, segment count, the first 200 characters, the failure reason and the time taken in milliseconds.
     - The `/dev/captions` page has a textarea and a plain results table with a total at the bottom ("7 of 10 returned captions").
