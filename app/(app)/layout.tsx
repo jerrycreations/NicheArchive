@@ -1,7 +1,7 @@
 import { AddVideoDialogProvider } from "@/components/layout/add-video-dialog";
 import { TopBar } from "@/components/layout/top-bar";
 
-/** The shell for every page behind the passcode: top bar and a centered content area. */
+/** The shell for every app page: top bar and a centered content area. */
 export default function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <AddVideoDialogProvider>

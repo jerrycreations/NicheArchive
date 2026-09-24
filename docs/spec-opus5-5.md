@@ -2,12 +2,12 @@
 
 ## Project Description
 
-A private web app for two people to archive YouTube videos and their transcripts and ask Google's Gemini questions about them. Videos are added one at a time by URL. The app stores the link, metadata and thumbnail (never the video file) and gets the English transcript automatically. Users can chat about one video, ask a question across the whole archive (the app finds the relevant videos and answers from their transcripts), or chat with plain Gemini. Chats are saved. All transcripts can be downloaded as a folder of .txt files. Everything runs on free tiers.
+A web app for two people to archive YouTube videos and their transcripts and ask Google's Gemini questions about them. Videos are added one at a time by URL. The app stores the link, metadata and thumbnail (never the video file) and gets the English transcript automatically. Users can chat about one video, ask a question across the whole archive (the app finds the relevant videos and answers from their transcripts), or chat with plain Gemini. Chats are saved. All transcripts can be downloaded as a folder of .txt files. Everything runs on free tiers.
 
 ## Target Audience
 
-- The owner and one friend, private behind a shared passcode
-- Not public; no plans to show it to others yet
+- The owner and one friend, who share the site's unlisted URL
+- Not advertised; no plans to show it to others yet
 - Expected to grow to hundreds of mostly short videos
 
 ## Desired Features
@@ -84,7 +84,7 @@ A private web app for two people to archive YouTube videos and their transcripts
 ### Access
 
 - [ ] No user accounts
-- [ ] A shared passcode protects the whole site (stored in an environment variable); a device stays unlocked for 30 days
+- [ ] No passcode either (dropped on 2026-09-24, because unlocking got in the way during development): the site is unlisted, search engines are asked not to index it, and anyone with the URL can use it
 - [ ] Gemini key, YouTube key and database credentials stay on the server only
 
 ### Later (not in v1)
@@ -172,7 +172,7 @@ Second paragraph...
 ### Build Order
 
 1. Test page on Vercel that fetches captions for ~10 real videos (confirms the transcript approach)
-2. Passcode, library, adding videos, transcripts
+2. Library, adding videos, transcripts
 3. Video chat and saved chats
 4. Indexing and "All my videos" chat
 5. Export, search box, finishing touches

@@ -13,8 +13,6 @@ const envSchema = z.object({
     /^postgres(ql)?:\/\//,
     "must be a postgres:// connection string",
   ),
-  APP_PASSCODE: text(),
-  AUTH_SECRET: text().min(32, "must be at least 32 characters"),
   YOUTUBE_API_KEY: text(),
   GOOGLE_GENERATIVE_AI_API_KEY: text(),
   GEMINI_CHAT_MODEL: text(),
@@ -63,7 +61,7 @@ function parseEnv<T>(schema: z.ZodType<T>): T {
   const result = schema.safeParse(process.env);
   if (result.success) return result.data;
 
-  // Keep the first problem per key; a blank AUTH_SECRET is "missing", not also "too short".
+  // Keep the first problem per key; a blank DATABASE_URL is "missing", not also "not a postgres:// string".
   const problems = new Map<string, string>();
   for (const issue of result.error.issues) {
     const key = String(issue.path[0]);

@@ -24,6 +24,7 @@ The spec leaves these open. Change any of them here before generating code.
 - **Captions sit behind one module.** The caption library is used in a single adapter file so it can be swapped. When it returns nothing, the pipeline moves on to the next source. No workaround is added, as the spec's Risks section decides.
 - **Thumbnails skip Vercel image optimization** (`unoptimized`). YouTube already serves sized JPEGs, and this keeps the Hobby image quota untouched.
 - **Testing.** Each step that adds logic writes Vitest unit tests for it. AI calls are tested with the AI SDK's mock models. The SQL is tested against PGlite with its vector extension. A Playwright smoke test is optional.
+- **No passcode (changed 2026-09-24).** Section 4's shared passcode was built and then removed at the user's request, because unlocking got in the way during development. The site is unlisted (`robots.txt` and `noindex` metadata) and open to anyone with its URL. Server actions and route handlers don't check a session, and `APP_PASSCODE`, `AUTH_SECRET` and `SESSION_MAX_AGE_DAYS` are gone. Only the cron route checks a secret (`CRON_SECRET`), and the caption spike route answers `404` in production.
 
 ---
 
@@ -74,6 +75,7 @@ The spec leaves these open. Change any of them here before generating code.
     - `README.md`: environment variable table
   - **Step Dependencies**: Step 1
   - **User Instructions**: Run `npm i zod server-only`. Copy `.env.example` to `.env.local`. Leave values blank for now; later steps say where to get each one.
+  - **Removed later**: `APP_PASSCODE`, `AUTH_SECRET` and `SESSION_MAX_AGE_DAYS` went with the passcode on 2026-09-24 (see "No passcode" above).
 
 - [x] Step 3: Vitest, YouTube URL parsing and time formatting
   - **Task**: Set up Vitest with the Node environment and path-alias resolution. Then write the parsing and formatting helpers and their tests.
@@ -283,6 +285,8 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 4: Access
 
+**Removed on 2026-09-24.** Steps 11 and 12 were built, then deleted at the user's request (see "No passcode" in the decisions above). `proxy.ts`, the `/unlock` page and action, `lib/auth/` and their tests are gone. The no-indexing half of Step 12 stays: `app/robots.ts` and the root layout's `robots` metadata. The spike route's production `404` is back, so the caption spike runs on a preview deployment again. The notes below record what was built.
+
 - [x] Step 11: Passcode session library
   - **Task**: Write the shared-passcode session using Web Crypto only, so it runs in any runtime.
     - `verifyPasscode(input)`: compare HMAC digests of the input and `APP_PASSCODE`, so the comparison takes constant time and lengths don't leak.
@@ -385,7 +389,7 @@ The spec leaves these open. Change any of them here before generating code.
     - `insertVideo`: uses `on conflict (youtube_id) do nothing returning`, so a race between two adds becomes `already_exists`
     - `countChatsForVideo`, `deleteVideo`
 
-    Then write the `addVideo({ url, confirmLong })` server action. It calls `requireSession()` and returns a discriminated union instead of throwing:
+    Then write the `addVideo({ url, confirmLong })` server action. It returns a discriminated union instead of throwing:
     - `invalid_url`
     - `already_exists { youtubeId, title }`
     - `not_found`, `live_or_upcoming`, `quota_exceeded`, `error { message }`
@@ -436,7 +440,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**: None
 
 - [ ] Step 18: Delete a video
-  - **Task**: Add the `deleteVideo(youtubeId)` action. It calls `requireSession()` and relies on the cascading foreign keys, so the transcript, chunks, video chats and their messages go in one statement. It then revalidates `/library`.
+  - **Task**: Add the `deleteVideo(youtubeId)` action. It relies on the cascading foreign keys, so the transcript, chunks, video chats and their messages go in one statement. It then revalidates `/library`.
     - The confirm dialog names the video and lists what will be removed: "its transcript, its search index and N chats about it". The number comes from `countChatsForVideo`.
     - After deleting, go to `/library` if the user is on that video's page.
     - Show a toast on failure.
@@ -525,7 +529,7 @@ The spec leaves these open. Change any of them here before generating code.
     `effectiveStatus(video, now)` is pure. It reports `pending` rows with a claim older than the stall limit as `failed` ("Took too long"). Add tests for it.
 
     `POST /api/transcripts/process` takes `{ youtubeId }`:
-    - It calls `requireSession()` and uses `runtime = "nodejs"` and `maxDuration = 300` (check this against Vercel's current Hobby limit).
+    - It uses `runtime = "nodejs"` and `maxDuration = 300` (check this against Vercel's current Hobby limit).
     - It returns `200` when the video is already `ready`. Otherwise it returns `202` and runs `processVideoTranscript` in `after()`.
     - Retries use the same route; the claim makes repeat calls harmless.
   - **Files**:
@@ -538,7 +542,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**: None
 
 - [ ] Step 23: Status polling and retry
-  - **Task**: `GET /api/videos/status?ids=a,b,c` returns `{ youtubeId, status (effective), source, errorMessage }[]` and calls `requireSession()`.
+  - **Task**: `GET /api/videos/status?ids=a,b,c` returns `{ youtubeId, status (effective), source, errorMessage }[]`.
     - `TranscriptStatusWatcher` is a client component that receives the IDs of pending videos.
       - For any pending video with no claim, it calls the process route once. This covers a tab closed right after adding.
       - It polls every 3 seconds, slowing to 10 seconds, stops when every video has finished, and calls `router.refresh()` when something changes.
@@ -561,7 +565,7 @@ The spec leaves these open. Change any of them here before generating code.
     - It explains that automatic transcription didn't work, lists each stage's reason from `error_message`, and has a Retry button.
     - An "Open in youtubetotranscript.com" link opens that site in a new tab (`target="_blank" rel="noopener noreferrer"`). Build the link in `lib/youtube/links.ts`: use the site's page for this video if the URL pattern is confirmed, otherwise its home page. The app never sends requests to that site; the user copies the text by hand.
     - A textarea accepts the pasted transcript. The `savePastedTranscript({ youtubeId, text })` action:
-      - calls `requireSession()` and validates with Zod
+      - validates with Zod
       - runs `parsePastedTranscript`
       - writes the segments, the plain text, source `pasted`, `timestamps_estimated` and status `ready`
       - revalidates the page
@@ -649,7 +653,7 @@ The spec leaves these open. Change any of them here before generating code.
     - `generateChatTitle(question)` asks the rewrite model for a title of 60 characters or fewer.
     - `fallbackTitle(question)` is pure: it trims at a word boundary and adds an ellipsis. It's used when the model call fails, because a title should never break a chat.
 
-    Add the `renameChat` and `deleteChat` actions with `requireSession()` and Zod. Test `fallbackTitle`.
+    Add the `renameChat` and `deleteChat` actions, validated with Zod. Test `fallbackTitle`.
   - **Files**:
     - `lib/db/queries/chats.ts`: chat queries
     - `lib/db/queries/messages.ts`: message queries and `saveExchange`
@@ -682,7 +686,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**: None
 
 - [ ] Step 30: Chat API route for video and general modes
-  - **Task**: `POST /api/chat` takes `{ chatId, mode, youtubeId?, message: { id, text } }`, validated with Zod. It calls `requireSession()` and sets `maxDuration = 60`.
+  - **Task**: `POST /api/chat` takes `{ chatId, mode, youtubeId?, message: { id, text } }`, validated with Zod. It sets `maxDuration = 60`.
     - It calls `createChatIfMissing`. For an existing chat, the mode stored in the database wins over what the client sent.
     - Video mode: load the video. If its transcript isn't `ready`, return `409` with "This video's transcript isn't ready yet."
     - Load the history from the database, trim it and add the new message.
@@ -825,7 +829,7 @@ The spec leaves these open. Change any of them here before generating code.
     - In one transaction, it deletes the video's old chunks, inserts the new ones and sets `indexed_at`, `indexed_model` and `index_error = null`.
     - On failure it writes `index_error` and leaves the transcript `status` as `ready`.
     - Call it at the end of `processVideoTranscript`, inside the same `after()` work, and from `savePastedTranscript` in `after()`.
-    - `POST /api/index/[youtubeId]` calls `requireSession()`, sets `maxDuration = 300`, runs `indexVideo` and waits for it, then returns the chunk count or a typed error (including `retryAfterSeconds` for 429s).
+    - `POST /api/index/[youtubeId]` sets `maxDuration = 300`, runs `indexVideo` and waits for it, then returns the chunk count or a typed error (including `retryAfterSeconds` for 429s).
     - On the video page, show a quiet "Library search index failed" notice with a Retry button when `index_error` is set.
   - **Files**:
     - `lib/search/index-video.ts`: chunk, embed and replace in a transaction
@@ -972,7 +976,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**: None
 
 - [ ] Step 46: Export routes and the browser-built ZIP
-  - **Task**: `GET /api/export` calls `requireSession()` and returns `{ files: [{ name, content }], skipped }` for every `ready` video, ordered by title, with unique names and `Cache-Control: no-store`.
+  - **Task**: `GET /api/export` returns `{ files: [{ name, content }], skipped }` for every `ready` video, ordered by title, with unique names and `Cache-Control: no-store`.
     - `GET /api/export/[youtubeId]` returns one `text/plain; charset=utf-8` file with `Content-Disposition: attachment` and a `filename*=UTF-8''…` name, so non-ASCII titles survive.
     - `DownloadAllButton` sits in the library toolbar. It:
       - fetches the bundle and loads `jszip` only when clicked
@@ -996,7 +1000,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **Task**: Make failures look the same everywhere.
     - `lib/errors.ts` brings the YouTube, AI and database error kinds into one table of user-facing messages. Include "Can't reach the database. If the Supabase project is paused, restore it from the Supabase dashboard."
     - Add an error boundary for the route group, a global error page and a root not-found page, each with a readable message and a Retry button.
-    - Check every server action and route handler: they return typed failures instead of throwing, `401`s are handled, and nothing reaches a blank screen.
+    - Check every server action and route handler: they return typed failures instead of throwing, and nothing reaches a blank screen.
     - Use toasts for short-lived failures and inline messages for anything the user has to act on.
   - **Files**:
     - `lib/errors.ts`: combined error kinds and messages
@@ -1049,7 +1053,7 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**: Run `npm i -D @electric-sql/pglite @electric-sql/pglite-pgvector @vitest/coverage-v8`. Since PGlite 0.5, pgvector ships as its own package: `import { vector } from "@electric-sql/pglite-pgvector"`. Run `set search_path to "$user", public, extensions` before applying the migrations, as on Supabase. Run `npm test`, `npm run test:db` and `npm run typecheck` locally and check that all three pass before pushing.
 
 - [ ] Step 50: End-to-end smoke test (optional)
-  - **Task**: Add one Playwright test for the main path against a seeded local database. It unlocks with the passcode, opens a seeded video, sees its transcript, clicks a timestamp, sends a video-chat message with the AI route stubbed, and downloads the single transcript. It intercepts every request to Google and YouTube, so it never uses quota or depends on the network.
+  - **Task**: Add one Playwright test for the main path against a seeded local database. It opens a seeded video, sees its transcript, clicks a timestamp, sends a video-chat message with the AI route stubbed, and downloads the single transcript. It intercepts every request to Google and YouTube, so it never uses quota or depends on the network.
   - **Files**:
     - `playwright.config.ts`: web server and base URL
     - `e2e/smoke.spec.ts`: main-path test
@@ -1086,4 +1090,4 @@ The spec leaves these open. Change any of them here before generating code.
   - **User Instructions**:
     1. In Vercel, add every variable from `.env.example` under **Settings → Environment Variables** for Production and Preview (`DATABASE_MIGRATION_URL` isn't needed there), then redeploy.
     2. Add one real video from start to finish. Check that the transcript arrives, that an "All my videos" question finds it, and that the ZIP unzips to a folder of `.txt` files.
-    3. Share the URL and passcode with your friend.
+    3. Share the URL with your friend.

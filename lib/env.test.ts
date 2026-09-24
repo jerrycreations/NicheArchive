@@ -3,8 +3,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const VALID = {
   DATABASE_URL:
     "postgresql://postgres.abc:p%40ss@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
-  APP_PASSCODE: "open sesame",
-  AUTH_SECRET: "x".repeat(32),
   YOUTUBE_API_KEY: "yt-key",
   GOOGLE_GENERATIVE_AI_API_KEY: "gemini-key",
   GEMINI_CHAT_MODEL: "gemini-3.8-flash",
@@ -43,7 +41,7 @@ describe("env", () => {
     const env = await loadEnv();
     expect(env()).toMatchObject({
       DATABASE_URL: VALID.DATABASE_URL,
-      AUTH_SECRET: VALID.AUTH_SECRET,
+      YOUTUBE_API_KEY: VALID.YOUTUBE_API_KEY,
       EMBEDDING_DIMENSIONS: 768,
     });
   });
@@ -51,8 +49,7 @@ describe("env", () => {
   it("names every missing or invalid key in one error", async () => {
     stubEnv({
       DATABASE_URL: "https://example.com",
-      APP_PASSCODE: "",
-      AUTH_SECRET: "too-short",
+      GOOGLE_GENERATIVE_AI_API_KEY: "",
       EMBEDDING_DIMENSIONS: "767",
       CRON_SECRET: "   ",
     });
@@ -64,25 +61,24 @@ describe("env", () => {
       message = (error as Error).message;
     }
     expect(message).toContain("DATABASE_URL must be a postgres:// connection string");
-    expect(message).toContain("APP_PASSCODE is missing");
-    expect(message).toContain("AUTH_SECRET must be at least 32 characters");
+    expect(message).toContain("GOOGLE_GENERATIVE_AI_API_KEY is missing");
     expect(message).toContain("EMBEDDING_DIMENSIONS must be 768");
     expect(message).toContain("CRON_SECRET is missing");
     expect(message).not.toContain("YOUTUBE_API_KEY");
   });
 
-  it("reports a blank secret once, as missing", async () => {
-    stubEnv({ AUTH_SECRET: "" });
+  it("reports a blank value once, as missing", async () => {
+    stubEnv({ DATABASE_URL: "" });
     const env = await loadEnv();
-    expect(env).toThrow(/AUTH_SECRET is missing/);
-    expect(env).not.toThrow(/at least 32/);
+    expect(env).toThrow(/DATABASE_URL is missing/);
+    expect(env).not.toThrow(/postgres:\/\/ connection string/);
   });
 
   it("caches the first successful result", async () => {
     stubEnv();
     const env = await loadEnv();
     const first = env();
-    vi.stubEnv("APP_PASSCODE", "");
+    vi.stubEnv("YOUTUBE_API_KEY", "");
     expect(env()).toBe(first);
   });
 });
@@ -98,7 +94,7 @@ describe("envPick", () => {
   });
 
   it("names only the named keys that are missing or invalid", async () => {
-    stubEnv({ DATABASE_URL: "mysql://nope", CRON_SECRET: "", APP_PASSCODE: "" });
+    stubEnv({ DATABASE_URL: "mysql://nope", CRON_SECRET: "", YOUTUBE_API_KEY: "" });
     const envPick = await loadEnvPick();
     let message = "";
     try {
@@ -108,6 +104,6 @@ describe("envPick", () => {
     }
     expect(message).toContain("DATABASE_URL must be a postgres:// connection string");
     expect(message).toContain("CRON_SECRET is missing");
-    expect(message).not.toContain("APP_PASSCODE");
+    expect(message).not.toContain("YOUTUBE_API_KEY");
   });
 });

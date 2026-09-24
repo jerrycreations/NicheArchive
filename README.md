@@ -1,6 +1,6 @@
 # NicheArchive
 
-A private web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. It sits behind a shared passcode and runs entirely on free tiers.
+A web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. It runs entirely on free tiers.
 
 - Spec: [docs/spec-opus5-5.md](docs/spec-opus5-5.md)
 - Build plan: [docs/plan-opus5-5.md](docs/plan-opus5-5.md)
@@ -41,8 +41,6 @@ Set these in `.env.local` for development and in **Vercel → Project → Settin
 | --- | --- | --- |
 | `DATABASE_URL` | The app's database connection | Supabase → **Connect** → **Transaction pooler** (port 6543) |
 | `DATABASE_MIGRATION_URL` | `drizzle-kit` migrations only | Supabase → **Connect** → **Session pooler** (port 5432) |
-| `APP_PASSCODE` | The shared passcode that unlocks the site | You choose it. Make it a long passphrase, since there's no lockout. Changing it signs out every device. |
-| `AUTH_SECRET` | Signs the session cookie (at least 32 characters) | `openssl rand -base64 32` |
 | `YOUTUBE_API_KEY` | Video metadata (YouTube Data API v3) | Google Cloud Console → enable **YouTube Data API v3** → **Credentials** → API key |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini chat, transcription and embeddings | Google AI Studio → **Get API key** |
 | `GEMINI_CHAT_MODEL` | Chat answers and video transcription | Default `gemini-3.8-flash` |
@@ -61,9 +59,9 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 ## Access
 
-`proxy.ts` sends any device without a valid `na_session` cookie to `/unlock`, and API requests without one get `401` JSON. Only `/unlock` and `/api/cron/*` are open. The cookie is signed with `AUTH_SECRET`, lasts 30 days, and stops working when `APP_PASSCODE` or `AUTH_SECRET` changes.
+There's no sign-in. Anyone who has the site's URL can use it: read, add and delete videos and chats, and ask questions that spend the free Gemini and YouTube quotas. The site is only unlisted: `robots.txt` and `noindex` tags keep search engines away, so share the URL only with people you trust.
 
-The proxy isn't the only check. Every server action calls `requireSession()`, and every route handler except the cron is wrapped in `withSession()`. Both live in [lib/auth/require-session.ts](lib/auth/require-session.ts). A server action is posted to whichever page uses it, so a matcher change could leave it outside the proxy.
+The API keys and database credentials still stay on the server. The daily keep-alive route is the one route that checks a secret: Vercel Cron sends `CRON_SECRET` with each call.
 
 ## Database migrations
 

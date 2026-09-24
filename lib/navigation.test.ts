@@ -17,7 +17,7 @@ describe("isActivePath", () => {
     ["/videos/dQw4w9WgXcQ", "/library"],
     ["/videos/dQw4w9WgXcQ", "/chats"],
     ["/", "/library"],
-    ["/unlock", "/library"],
+    ["/dev/captions", "/library"],
   ])("doesn't mark %j as inside %j", (pathname, href) => {
     expect(isActivePath(pathname, href)).toBe(false);
   });
