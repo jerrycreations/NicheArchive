@@ -26,8 +26,8 @@ export function RetryTranscriptButton({
   function retry() {
     startTransition(async () => {
       const outcome = await requestTranscript(youtubeId);
-      if (outcome === null) {
-        toast.error("Couldn't start the transcript again. Try again.");
+      if (typeof outcome === "object") {
+        toast.error(outcome.error);
         return;
       }
       if (outcome === "not_found") toast.error("This video isn't in the library anymore.");

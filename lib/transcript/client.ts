@@ -1,5 +1,7 @@
 // Browser helpers for the transcript routes. They never throw: a failed
-// request comes back as null, and callers decide what to tell the user.
+// request comes back as null or as a message for the user, and callers
+// decide what to show.
+import { readErrorBody, SERVER_PROBLEM, SERVER_UNREACHABLE } from "@/lib/errors";
 import type {
   ProcessOutcome,
   ProcessResponse,
@@ -9,19 +11,24 @@ import type {
 /**
  * Asks the server to get a video's transcript, or to try again after a
  * failure. Safe to call more than once: only one run works on a video.
+ * Returns what happened, or `{ error }` with a message for the user.
  */
-export async function requestTranscript(youtubeId: string): Promise<ProcessOutcome | null> {
+export async function requestTranscript(
+  youtubeId: string,
+): Promise<ProcessOutcome | { error: string }> {
+  let body: unknown;
   try {
     const response = await fetch("/api/transcripts/process", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ youtubeId }),
     });
-    const body = (await response.json()) as Partial<ProcessResponse>;
-    return body.outcome ?? null;
+    body = await response.json();
   } catch {
-    return null;
+    return { error: SERVER_UNREACHABLE };
   }
+  const outcome = (body as Partial<ProcessResponse> | null)?.outcome;
+  return outcome ?? { error: readErrorBody(body) ?? SERVER_PROBLEM };
 }
 
 /** The current transcript states of these videos. Videos that no longer exist are left out. */

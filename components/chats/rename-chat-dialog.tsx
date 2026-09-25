@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { actionError } from "@/lib/actions/result";
 import { MAX_CHAT_TITLE_CHARS } from "@/lib/constants";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { chatTitleSchema } from "@/lib/validation/chat";
 
 /**
@@ -51,7 +52,7 @@ export function RenameChatDialog({
       try {
         result = await renameChat({ chatId, title: next });
       } catch {
-        result = actionError("Couldn't reach the server. Try again.");
+        result = actionError(SERVER_UNREACHABLE);
       }
       if (result.kind === "error") toast.error(result.message);
     });
@@ -120,7 +121,7 @@ function RenameForm({ title, onSave }: { title: string; onSave: (title: string) 
           autoComplete="off"
         />
         {error && (
-          <p id={errorId} className="text-sm text-destructive">
+          <p id={errorId} role="alert" className="text-sm text-destructive">
             {error}
           </p>
         )}

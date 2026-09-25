@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { actionError } from "@/lib/actions/result";
 import { MAX_PASTED_TRANSCRIPT_CHARS } from "@/lib/constants";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { TRANSCRIPT_TOO_LONG } from "@/lib/transcript/parse-pasted";
 
 /**
@@ -40,7 +41,7 @@ export function PasteTranscriptForm({ youtubeId }: { youtubeId: string }) {
       try {
         result = await savePastedTranscript({ youtubeId, text });
       } catch {
-        result = actionError("Couldn't reach the server. Try again.");
+        result = actionError(SERVER_UNREACHABLE);
       }
 
       // Updates after an await need their own transition to commit together

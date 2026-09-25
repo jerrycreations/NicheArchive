@@ -2,6 +2,7 @@
 
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_CHAT_MESSAGE_CHARS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
@@ -76,5 +77,21 @@ export function Composer({
         </Button>
       )}
     </form>
+  );
+}
+
+/**
+ * The chat panel's bottom bar while a chat loads: the composer at the
+ * messages' reading width. The textarea is 38px tall on phones, where its
+ * text is larger, and 36px from `md`.
+ */
+export function ComposerSkeleton() {
+  return (
+    <div className="border-t p-3" aria-hidden>
+      <div className="mx-auto flex w-full max-w-3xl items-end gap-2">
+        <Skeleton className="h-9.5 flex-1 md:h-9" />
+        <Skeleton className="size-8 shrink-0" />
+      </div>
+    </div>
   );
 }

@@ -58,7 +58,11 @@ export function VideoPicker({
           <ChevronsUpDownIcon className="opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-(--radix-popover-trigger-width) min-w-72 p-0">
+      <PopoverContent
+        align="start"
+        // At least 18rem, but never wider than a phone's screen.
+        className="w-(--radix-popover-trigger-width) min-w-[min(18rem,calc(100vw-2rem))] p-0"
+      >
         <Command>
           <CommandInput placeholder="Search by title or channel" />
           <CommandList>

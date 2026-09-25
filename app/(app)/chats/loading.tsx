@@ -1,27 +1,31 @@
+import { ComposerSkeleton } from "@/components/chat/composer";
 import { Skeleton } from "@/components/ui/skeleton";
 
-/** An open chat's shape while it loads; the list beside it loads on its own. */
-export default function ChatLoading() {
+/**
+ * A new chat's shape while the Chats page loads: the mode selector, the
+ * intro and the composer. An open chat has its own (chats/[id]/loading.tsx),
+ * and the list beside both loads on its own.
+ */
+export default function ChatsLoading() {
   return (
     <div className="flex h-full flex-col rounded-lg border">
       <p role="status" className="sr-only">
-        Loading the chat…
+        Loading…
       </p>
-      <div className="flex flex-col gap-1.5 border-b px-4 py-3">
-        <Skeleton className="h-5 w-56 max-w-full" />
-        <Skeleton className="h-3 w-40 max-w-full" />
+      <div className="border-b p-3" aria-hidden>
+        <Skeleton className="h-7 w-full" />
       </div>
-      <div className="flex flex-1 flex-col gap-5 overflow-hidden p-4">
-        <Skeleton className="ml-auto h-10 w-3/5 rounded-2xl" />
-        <div className="flex flex-col gap-2">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-11/12" />
-          <Skeleton className="h-4 w-4/5" />
+      <div className="min-h-0 flex-1 p-4" aria-hidden>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-1">
+          <div className="flex h-5 items-center">
+            <Skeleton className="h-3.5 w-28" />
+          </div>
+          <div className="flex h-5 items-center">
+            <Skeleton className="h-3.5 w-3/4" />
+          </div>
         </div>
       </div>
-      <div className="border-t p-3">
-        <Skeleton className="h-9 w-full" />
-      </div>
+      <ComposerSkeleton />
     </div>
   );
 }

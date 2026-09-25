@@ -1,6 +1,6 @@
 # Caption spike results
 
-Build order step 1 in the spec, plan Step 5. This measures how often the caption library returns an English transcript locally and on Vercel. YouTube may block caption requests from cloud IPs, so the deployed column is the one that matters. Step 48 deletes the spike page and route; this file stays as the record.
+Build order step 1 in the spec, plan Step 5. This measures how often the caption library returns an English transcript locally and on Vercel. YouTube may block caption requests from cloud IPs, so the deployed column is the one that matters. The plan had Step 48 delete the spike page and route. They stay until the Deployed column is filled in (decided 2026-09-25); delete `app/dev/captions/page.tsx` and `app/api/dev/captions/route.ts` after that. This file stays as the record.
 
 ## How to run it
 
@@ -23,22 +23,22 @@ Result values:
 
 ## Results
 
-Date: ____  ·  Deployed region: ____
+Local: 2026-09-25, from the development machine.  ·  Deployed: ____, region ____
 
 | # | Kind | URL | Local result | Local ms | Deployed result | Deployed ms | Notes |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1 | Normal upload, manual English captions | | | | | | |
-| 2 | Normal upload, manual English captions | | | | | | |
-| 3 | Normal upload, auto-captions only | | | | | | |
-| 4 | Normal upload, auto-captions only | | | | | | |
-| 5 | Short | | | | | | |
-| 6 | Short | | | | | | |
-| 7 | Live stream replay | | | | | | |
-| 8 | Long video (over 30 minutes) | | | | | | |
-| 9 | No captions at all | | | | | | |
-| 10 | Non-English video | | | | | | |
+| 1 | Normal upload, manual English captions | https://www.youtube.com/watch?v=dQw4w9WgXcQ | `manual_captions` (61 cues) | 1213 | | | Rick Astley; lyrics in ♪ |
+| 2 | Normal upload, manual English captions | https://www.youtube.com/watch?v=jNQXAC9IVRw | `manual_captions` (6 cues) | 1368 | | | Me at the zoo |
+| 3 | Normal upload, auto-captions only | https://www.youtube.com/watch?v=J---aiyznGQ | `auto_captions` (4 cues) | 851 | | | Keyboard Cat: only `[Applause] [Music]`, so the pipeline moves on to Gemini |
+| 4 | Normal upload, auto-captions only | https://www.youtube.com/watch?v=tNcc9tfyevM | `auto_captions` (438 cues) | 740 | | | Couple morning routine vlog |
+| 5 | Short | https://www.youtube.com/shorts/vrIrDIA0GTM | `auto_captions` (100 cues) | 768 | | | In the library |
+| 6 | Short | https://www.youtube.com/shorts/QgI9hOqr7uw | `no_english_track` | 827 | | | In the library; "This video has no captions." |
+| 7 | Live stream replay | https://www.youtube.com/watch?v=cxn_twDmrIU | `auto_captions` (508 cues) | 788 | | | The Car Care Nut Q&A |
+| 8 | Long video (over 30 minutes) | https://www.youtube.com/watch?v=ji5_MqicxSo | `manual_captions` (2131 cues) | 896 | | | 1:16:27 lecture |
+| 9 | No captions at all | https://www.youtube.com/watch?v=aqz-KE-bpKQ | `no_english_track` | 913 | | | Big Buck Bunny; "This video has no captions." |
+| 10 | Non-English video | https://www.youtube.com/watch?v=9bZkp7q19f0 | `no_english_track` | 852 | | | Gangnam Style; "Available: ko." |
 
-**Local:** __ of 10 returned captions.
+**Local:** 7 of 10 returned captions (rows 1–5, 7 and 8). Rows 6, 9 and 10 have no English track, as expected.
 **Deployed:** __ of 10 returned captions.
 
 ## What the result means
@@ -49,4 +49,6 @@ Date: ____  ·  Deployed region: ____
 
 ## Conclusion
 
-_Write one or two sentences here after running both columns._
+**Local (2026-09-25):** every video with an English track returned it in under 1.4 seconds, and the three without one said so. Row 3's track holds only sound labels, which the pipeline treats as no speech.
+
+**Deployed:** _still to run from a preview deployment._

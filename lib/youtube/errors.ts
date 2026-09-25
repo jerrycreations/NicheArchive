@@ -1,30 +1,13 @@
 // Why a YouTube Data API lookup failed, and what to tell the user. Holds no
-// secrets or server code, so client components import the messages too.
+// secrets or server code, so client components import the messages too. The
+// kinds and their messages live in lib/errors.ts.
+import { YOUTUBE_ERROR_MESSAGES, type YouTubeErrorKind } from "@/lib/errors";
 import { API_KEY_REASONS, errorMessage, errorReasons } from "@/lib/google/error-body";
 
-export const YOUTUBE_ERROR_KINDS = [
-  "not_found",
-  "live_or_upcoming",
-  "quota_exceeded",
-  "bad_key",
-  "network",
-  "unexpected",
-] as const;
-
-export type YouTubeErrorKind = (typeof YOUTUBE_ERROR_KINDS)[number];
-
-const MESSAGES: Record<YouTubeErrorKind, string> = {
-  not_found: "This video is private or has been deleted.",
-  live_or_upcoming: "This stream hasn't finished. Add it after it ends.",
-  quota_exceeded: "YouTube's daily lookup limit is used up. Try again tomorrow.",
-  bad_key:
-    "The YouTube API key is missing or isn't valid. Check YOUTUBE_API_KEY in the server settings.",
-  network: "Couldn't reach YouTube. Try again in a moment.",
-  unexpected: "YouTube sent a response this app didn't expect. Try again in a moment.",
-};
+export { YOUTUBE_ERROR_KINDS, type YouTubeErrorKind } from "@/lib/errors";
 
 export function youTubeErrorMessage(kind: YouTubeErrorKind): string {
-  return MESSAGES[kind];
+  return YOUTUBE_ERROR_MESSAGES[kind];
 }
 
 const QUOTA_REASONS = new Set(["quotaExceeded", "dailyLimitExceeded"]);

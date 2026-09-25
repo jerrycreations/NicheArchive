@@ -27,7 +27,7 @@ export function SourceCard({ source, deleted }: { source: MessageSourceVideo; de
 
   if (deleted) {
     return (
-      <div className="flex w-64 shrink-0 gap-3 rounded-lg border border-dashed p-2.5 text-muted-foreground">
+      <div className="flex w-full gap-3 rounded-lg border border-dashed p-2.5 text-muted-foreground">
         <SourceNumber index={source.index} />
         <div className="flex min-w-0 flex-col gap-0.5 text-sm">
           <p className="font-medium">Video deleted</p>
@@ -38,7 +38,7 @@ export function SourceCard({ source, deleted }: { source: MessageSourceVideo; de
   }
 
   return (
-    <article className="flex w-64 shrink-0 flex-col gap-2.5 rounded-lg border p-2.5">
+    <article className="flex w-full flex-col gap-2.5 rounded-lg border p-2.5">
       <div className="flex gap-3">
         <Link
           href={href}

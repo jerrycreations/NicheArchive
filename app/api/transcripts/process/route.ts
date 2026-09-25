@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { claimForProcessing, getVideoByYoutubeId } from "@/lib/db/queries/videos";
+import { serverErrorResponse } from "@/lib/errors";
 import { processVideoTranscript } from "@/lib/transcript/pipeline";
 import type { ProcessOutcome, ProcessResponse } from "@/lib/transcript/status";
 import { processRequestSchema } from "@/lib/validation/transcript";
@@ -26,15 +27,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const video = await getVideoByYoutubeId(parsed.data.youtubeId);
-  if (!video) return respond("not_found", 404);
-  if (video.status === "ready") return respond("ready", 200);
+  try {
+    const video = await getVideoByYoutubeId(parsed.data.youtubeId);
+    if (!video) return respond("not_found", 404);
+    if (video.status === "ready") return respond("ready", 200);
 
-  const claimedAt = await claimForProcessing(video.id, new Date());
-  if (!claimedAt) return respond("already_running", 202);
+    const claimedAt = await claimForProcessing(video.id, new Date());
+    if (!claimedAt) return respond("already_running", 202);
 
-  after(() => processVideoTranscript(video, claimedAt));
-  return respond("started", 202);
+    after(() => processVideoTranscript(video, claimedAt));
+    return respond("started", 202);
+  } catch (error) {
+    return serverErrorResponse("POST /api/transcripts/process", error);
+  }
 }
 
 function respond(outcome: ProcessOutcome, status: number): Response {

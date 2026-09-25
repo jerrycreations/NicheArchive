@@ -1,6 +1,21 @@
 import "server-only";
-import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  ne,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { db } from "@/lib/db";
+import { escapeLike } from "@/lib/db/like";
 import { chats, videos } from "@/lib/db/schema";
 import type {
   NewVideo,
@@ -9,6 +24,7 @@ import type {
   VideoOption,
   VideoRow,
 } from "@/lib/db/types";
+import type { ExportVideo } from "@/lib/export/format";
 import {
   effectiveStatus,
   staleCutoff,
@@ -50,11 +66,37 @@ export async function getVideoDetail(youtubeId: string): Promise<VideoDetail | n
 /**
  * The library grid, newest first by date added or by publish date. Statuses
  * are as people should see them: processing that stalled reads as failed.
+ *
+ * With search text `q`, only videos whose title, channel or transcript
+ * matches it as words (Postgres full-text search, so "rising" finds "rises"),
+ * or whose title or channel contains it as typed, which catches partial words
+ * and very short searches. The best word matches come first, title over
+ * channel over transcript, then the chosen order.
  */
 export async function listVideos({
   sort = "added",
-}: { sort?: VideoSort } = {}): Promise<VideoListItem[]> {
+  q = "",
+}: { sort?: VideoSort; q?: string } = {}): Promise<VideoListItem[]> {
   const database = db();
+  const query = q.trim();
+  const newestFirst =
+    sort === "published"
+      ? [desc(videos.publishedAt), desc(videos.createdAt)]
+      : [desc(videos.createdAt)];
+
+  let where: SQL | undefined;
+  let orderBy = newestFirst;
+  if (query) {
+    const words = sql`websearch_to_tsquery('english', ${query})`;
+    const contains = `%${escapeLike(query)}%`;
+    where = or(
+      sql`${videos.searchVector} @@ ${words}`,
+      ilike(videos.title, contains),
+      ilike(videos.channel, contains),
+    );
+    orderBy = [desc(sql`ts_rank(${videos.searchVector}, ${words})`), ...newestFirst];
+  }
+
   const rows = await database
     .select({
       id: videos.id,
@@ -70,14 +112,43 @@ export async function listVideos({
       chatCount: database.$count(chats, eq(chats.videoId, videos.id)),
     })
     .from(videos)
-    .orderBy(
-      ...(sort === "published"
-        ? [desc(videos.publishedAt), desc(videos.createdAt)]
-        : [desc(videos.createdAt)]),
-    );
+    .where(where)
+    .orderBy(...orderBy);
 
   const now = new Date();
   return rows.map((row) => ({ ...row, status: effectiveStatus(row, now).status }));
+}
+
+/** How many videos the library has, searched or not. */
+export async function countVideos(): Promise<number> {
+  return db().$count(videos);
+}
+
+/**
+ * Every video with a ready transcript, for "Download all", ordered by title.
+ * Videos with the same title stay in the order they were added, so the first
+ * one keeps the plain filename.
+ */
+export async function listExportVideos(): Promise<ExportVideo[]> {
+  const rows = await db()
+    .select({
+      youtubeId: videos.youtubeId,
+      title: videos.title,
+      channel: videos.channel,
+      publishedAt: videos.publishedAt,
+      transcriptSegments: videos.transcriptSegments,
+    })
+    .from(videos)
+    .where(eq(videos.status, "ready"))
+    .orderBy(asc(videos.title), asc(videos.createdAt));
+  return rows.flatMap(({ transcriptSegments, ...video }) =>
+    transcriptSegments ? [{ ...video, transcriptSegments }] : [],
+  );
+}
+
+/** Videos without a ready transcript yet, which "Download all" skips. */
+export async function countNotReady(): Promise<number> {
+  return db().$count(videos, ne(videos.status, "ready"));
 }
 
 /** Every video for the new-chat picker, newest first, with its effective status. */

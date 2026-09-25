@@ -39,7 +39,8 @@ export function ChatListDrawer({ chats, now }: { chats: ChatWithVideo[]; now: Da
           chats={chats}
           now={now}
           onNavigate={() => setOpen(false)}
-          className="flex-1 px-4"
+          // Clear of a phone's home indicator.
+          className="flex-1 px-4 pb-[env(safe-area-inset-bottom)]"
         />
       </SheetContent>
     </Sheet>

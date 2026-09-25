@@ -1,6 +1,7 @@
 // Browser helpers for the search index routes. They never throw: a failed
 // request comes back as null or a message, and callers decide what to tell
 // the user.
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import type { IndexPendingResponse, IndexResponse } from "@/lib/search/index-types";
 
 /** Waited after a 429 when Google doesn't say how long. */
@@ -32,7 +33,7 @@ export async function fetchIndexCandidates(
     const body = (await response.json()) as IndexPendingResponse;
     return "youtubeIds" in body ? { ok: true, youtubeIds: body.youtubeIds } : { ok: false, message: body.error };
   } catch {
-    return { ok: false, message: "Couldn't reach the server. Try again." };
+    return { ok: false, message: SERVER_UNREACHABLE };
   }
 }
 

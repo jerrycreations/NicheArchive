@@ -1,4 +1,5 @@
 import { listVideoStatuses } from "@/lib/db/queries/videos";
+import { serverErrorResponse } from "@/lib/errors";
 import type { TranscriptStatusInfo } from "@/lib/transcript/status";
 import { MAX_STATUS_IDS, statusIdsSchema } from "@/lib/validation/transcript";
 
@@ -19,6 +20,11 @@ export async function GET(request: Request) {
     );
   }
 
-  const statuses: TranscriptStatusInfo[] = await listVideoStatuses(ids.data);
+  let statuses: TranscriptStatusInfo[];
+  try {
+    statuses = await listVideoStatuses(ids.data);
+  } catch (error) {
+    return serverErrorResponse("GET /api/videos/status", error);
+  }
   return Response.json(statuses, { headers: { "Cache-Control": "no-store" } });
 }

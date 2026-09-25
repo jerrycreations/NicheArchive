@@ -1,15 +1,22 @@
 import { ExternalLinkIcon } from "lucide-react";
 import { LocalDate } from "@/components/common/local-date";
+import { DownloadTranscriptButton } from "@/components/video/download-transcript-button";
 import { VideoActionsMenu } from "@/components/video/video-actions-menu";
 import type { VideoDetail } from "@/lib/db/types";
 import { formatDuration } from "@/lib/time";
 import { buildWatchUrl } from "@/lib/youtube/url";
 
-/** The video page's header: title, channel, dates, a link to YouTube and the actions menu. */
+/**
+ * The video page's header: title, channel, dates, a link to YouTube, a
+ * transcript download once the transcript is ready, and the actions menu.
+ */
 export function VideoMeta({
   video,
 }: {
-  video: Pick<VideoDetail, "youtubeId" | "title" | "channel" | "publishedAt" | "durationSeconds" | "chatCount">;
+  video: Pick<
+    VideoDetail,
+    "youtubeId" | "title" | "channel" | "publishedAt" | "durationSeconds" | "chatCount" | "status"
+  >;
 }) {
   return (
     <header className="flex items-start gap-2">
@@ -39,6 +46,12 @@ export function VideoMeta({
             <ExternalLinkIcon className="size-3.5" aria-hidden />
             <span className="sr-only">(opens in a new tab)</span>
           </a>
+          {video.status === "ready" && (
+            <>
+              <Dot />
+              <DownloadTranscriptButton youtubeId={video.youtubeId} />
+            </>
+          )}
         </p>
       </div>
       <VideoActionsMenu

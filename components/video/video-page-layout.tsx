@@ -1,3 +1,4 @@
+import { ComposerSkeleton } from "@/components/chat/composer";
 import { TranscriptSkeleton } from "@/components/transcript/transcript-processing";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -26,16 +27,23 @@ const PLAYER_SLOT = "sticky top-14 z-10 bg-background pt-2 pb-3 lg:col-start-1 l
 // Never taller than about 55% of the screen, so the transcript keeps room.
 const PLAYER_BOX = "w-full max-w-[calc(55dvh*16/9)]";
 
+// Below `lg`, the tabs stay pinned under the player (the top bar's 3.5rem,
+// the slot's 1.25rem of padding and the player), so Chat and Transcript stay
+// a tap away however far down the transcript has scrolled. The background
+// hides the transcript scrolling under them.
+const TABS_SLOT = "sticky top-[calc(4.75rem+var(--player-h))] z-10 bg-background pb-2 lg:hidden";
+
 // Pinned beside the player, its top level with the player's (the slot's
 // `pt-2`) whether or not the page has scrolled. It ends 2rem above the bottom
 // of the screen, where the page's bottom padding ends the grid, so reaching
 // the end of the page doesn't push it up.
 //
-// Below `lg`, once scrolled to, it fills the screen under the pinned player:
-// less the top bar (3.5rem), the player slot's padding (1.25rem), the player
-// and 1rem to spare. The messages scroll inside, so the composer stays in view.
+// Below `lg`, scrolled to the end of the page, it fills the screen between
+// the pinned tabs and the page's bottom padding: less the top bar (3.5rem),
+// the player slot's padding (1.25rem), the player, the tabs (2.5rem) and the
+// padding (2rem). The messages scroll inside, so the composer stays in view.
 const CHAT_SLOT =
-  "h-[calc(100dvh-5.75rem-var(--player-h))] min-h-80 lg:sticky lg:top-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-2 lg:h-[calc(100dvh-6rem)] lg:min-h-0";
+  "h-[calc(100dvh-9.25rem-var(--player-h))] min-h-80 lg:sticky lg:top-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-2 lg:h-[calc(100dvh-6rem)] lg:min-h-0";
 
 // Both panels stay mounted, so switching tabs on a phone never resets the chat.
 // From `lg` there are no tabs, and both panels show.
@@ -56,10 +64,12 @@ export function VideoPageLayout({
       <div className={PLAYER_SLOT}>
         <div className={PLAYER_BOX}>{player}</div>
       </div>
-      <TabsList className="w-full lg:hidden">
-        <TabsTrigger value="transcript">Transcript</TabsTrigger>
-        <TabsTrigger value="chat">Chat</TabsTrigger>
-      </TabsList>
+      <div className={TABS_SLOT}>
+        <TabsList className="w-full">
+          <TabsTrigger value="transcript">Transcript</TabsTrigger>
+          <TabsTrigger value="chat">Chat</TabsTrigger>
+        </TabsList>
+      </div>
       {/* No tab stop on the panels themselves: they hold buttons and fields of their own. */}
       <TabsContent
         value="transcript"
@@ -81,17 +91,35 @@ export function VideoPageSkeleton() {
   return (
     <div className={GRID} aria-hidden>
       <div className={PLAYER_SLOT}>
-        <Skeleton className={cn(PLAYER_BOX, "aspect-video rounded-lg")} />
+        {/* Black, like the player itself. */}
+        <Skeleton className={cn(PLAYER_BOX, "aspect-video rounded-lg bg-black")} />
       </div>
-      <Skeleton className="h-8 w-full rounded-lg lg:hidden" />
+      <div className={TABS_SLOT}>
+        <Skeleton className="h-8 w-full rounded-lg" />
+      </div>
       <div className="flex flex-col gap-4 lg:col-start-1 lg:row-start-2">
-        <div className="flex flex-col gap-1.5">
-          <Skeleton className="h-5 w-24" />
-          <Skeleton className="h-4 w-44" />
+        {/* TranscriptViewer's header: the heading, the source and Copy. */}
+        <div className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex h-6 items-center">
+              <Skeleton className="h-4 w-24" />
+            </div>
+            <div className="flex h-5 items-center">
+              <Skeleton className="h-3.5 w-44" />
+            </div>
+          </div>
+          <Skeleton className="h-7 w-18 shrink-0" />
         </div>
         <TranscriptSkeleton />
       </div>
-      <Skeleton className={cn("hidden rounded-lg lg:block", CHAT_SLOT)} />
+      {/* VideoChat's panel: its header, the messages and the composer. */}
+      <div className={cn("hidden flex-col rounded-lg border lg:flex", CHAT_SLOT)}>
+        <div className="flex h-10 items-center border-b pr-1.5 pl-3">
+          <Skeleton className="h-3.5 w-32" />
+        </div>
+        <div className="flex-1" />
+        <ComposerSkeleton />
+      </div>
     </div>
   );
 }

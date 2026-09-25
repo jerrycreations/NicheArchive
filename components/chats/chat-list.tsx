@@ -58,19 +58,24 @@ export function ChatList({
   );
 }
 
-/** The list's shape while it loads. */
+/** The list's shape while it loads: New chat, then rows shaped like ChatListItem. */
 export function ChatListSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex flex-col gap-3", className)}>
-      <Skeleton className="h-9 w-full" />
-      <div className="flex flex-col gap-1">
+    <div className={cn("flex flex-col gap-3", className)} aria-hidden>
+      <Skeleton className="h-8 w-full" />
+      <div className="flex flex-col gap-0.5">
         {Array.from({ length: 6 }, (_, index) => (
           <div key={index} className="flex items-start gap-3 p-2">
-            <Skeleton className="aspect-video w-16 shrink-0" />
-            <div className="flex flex-1 flex-col gap-1.5 pt-0.5">
-              <Skeleton className="h-4 w-4/5" />
-              <Skeleton className="h-3 w-1/2" />
+            <Skeleton className="mt-0.5 aspect-video w-16 shrink-0" />
+            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <div className="flex h-5 items-center">
+                <Skeleton className="h-3.5 w-4/5" />
+              </div>
+              <div className="flex h-4 items-center">
+                <Skeleton className="h-3 w-1/2" />
+              </div>
             </div>
+            <div className="-my-0.5 -mr-1 size-7 shrink-0" />
           </div>
         ))}
       </div>

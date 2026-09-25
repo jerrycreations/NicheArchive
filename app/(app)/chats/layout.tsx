@@ -2,8 +2,10 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChatList, ChatListSkeleton } from "@/components/chats/chat-list";
 import { ChatListDrawer } from "@/components/chats/chat-list-drawer";
+import { DatabaseUnavailable } from "@/components/common/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { listChats } from "@/lib/db/queries/chats";
+import { unlessDatabaseDown } from "@/lib/errors";
 
 // The section fills the screen below the top bar (3.5rem and its 1px
 // border) and the page's padding (4rem), so a chat's messages scroll inside
@@ -30,7 +32,17 @@ export default function ChatsLayout({ children }: LayoutProps<"/chats">) {
 async function ChatsNav() {
   // Database reads don't make a page dynamic on their own (see the library page).
   await connection();
-  const chats = await listChats();
+  const loaded = await unlessDatabaseDown(listChats);
+  // The open chat or new chat beside it says the same, so on phones the
+  // drawer's row stays empty rather than repeating it.
+  if (!loaded.ok) {
+    return (
+      <nav aria-label="Chats" className={LIST_COLUMN}>
+        <DatabaseUnavailable heading="h2" compact />
+      </nav>
+    );
+  }
+  const chats = loaded.value;
   const now = new Date();
 
   return (
@@ -48,7 +60,8 @@ async function ChatsNav() {
 function ChatsNavSkeleton() {
   return (
     <>
-      <Skeleton className="h-8 w-32 lg:hidden" />
+      {/* The drawer's "All chats" button. */}
+      <Skeleton className="h-7 w-28 lg:hidden" />
       <div className={LIST_COLUMN}>
         <ChatListSkeleton />
       </div>

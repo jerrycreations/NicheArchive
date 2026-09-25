@@ -4,6 +4,7 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { envPick } from "@/lib/env";
+import { serverErrorResponse } from "@/lib/errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,12 @@ export async function GET(request: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  await db().execute(sql`select 1`);
+  try {
+    await db().execute(sql`select 1`);
+  } catch (error) {
+    // Still a failure, so the cron run shows as failed in Vercel.
+    return serverErrorResponse("GET /api/cron/ping", error);
+  }
   return Response.json({ ok: true, at: new Date().toISOString() });
 }
 

@@ -1,4 +1,5 @@
 import { getVideoByYoutubeId } from "@/lib/db/queries/videos";
+import { isDatabaseUnreachable, serverErrorMessage } from "@/lib/errors";
 import { indexVideo } from "@/lib/search/index-video";
 import type { IndexResponse } from "@/lib/search/index-types";
 import { youtubeIdSchema } from "@/lib/validation/video";
@@ -18,7 +19,15 @@ export async function POST(_request: Request, ctx: RouteContext<"/api/index/[you
     return Response.json({ error: "That isn't a YouTube video ID." }, { status: 400 });
   }
 
-  const video = await getVideoByYoutubeId(youtubeId);
+  let video;
+  try {
+    video = await getVideoByYoutubeId(youtubeId);
+  } catch (error) {
+    console.error(`POST /api/index/${youtubeId} failed:`, error);
+    const message = serverErrorMessage(error);
+    const status = isDatabaseUnreachable(error) ? 503 : 500;
+    return respond({ outcome: "failed", reason: "database", message }, status);
+  }
   if (!video) return respond({ outcome: "not_found" }, 404);
 
   const result = await indexVideo(video.id);

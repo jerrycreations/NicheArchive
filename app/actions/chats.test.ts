@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deleteChatById, updateChatTitle } from "@/lib/db/queries/chats";
+import { DATABASE_UNREACHABLE } from "@/lib/errors";
 import { deleteChat, renameChat } from "./chats";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
@@ -98,5 +99,11 @@ describe("deleteChat", () => {
       kind: "error",
       message: "Couldn't delete the chat. Try again.",
     });
+  });
+
+  it("says so when the database can't be reached", async () => {
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    vi.mocked(deleteChatById).mockRejectedValue(refused);
+    expect(await deleteChat(CHAT_ID)).toEqual({ kind: "error", message: DATABASE_UNREACHABLE });
   });
 });

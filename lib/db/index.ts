@@ -12,6 +12,9 @@ function createDb() {
     max: 1,
     // Encrypt traffic to Supabase. `require` doesn't verify the certificate.
     ssl: "require",
+    // postgres.js logs every NOTICE by default, and library search gets one
+    // for each search of only stop words ("the") or symbols.
+    onnotice: () => {},
   });
   return drizzle({ client, schema });
 }

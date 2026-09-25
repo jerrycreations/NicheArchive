@@ -1,5 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { isActivePath, parseStartParam, videoPath } from "./navigation";
+import { isActivePath, libraryPath, parseStartParam, videoPath } from "./navigation";
+
+describe("libraryPath", () => {
+  it("is the plain library with no search and the default sort", () => {
+    expect(libraryPath()).toBe("/library");
+    expect(libraryPath({ q: "  ", sort: "added" })).toBe("/library");
+  });
+
+  it("carries the search text and a non-default sort", () => {
+    expect(libraryPath({ q: " bread & butter ", sort: "published" })).toBe(
+      "/library?q=bread+%26+butter&sort=published",
+    );
+    expect(libraryPath({ sort: "published" })).toBe("/library?sort=published");
+  });
+});
 
 describe("videoPath", () => {
   it("links to the video's page by its YouTube ID", () => {

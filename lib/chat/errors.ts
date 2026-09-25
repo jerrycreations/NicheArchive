@@ -1,17 +1,15 @@
 // How /api/chat reports a failure, and how the chat turns any failure into
 // something to show. Used on both sides, so nothing here is server-only.
 import { APICallError, type FinishReason } from "ai";
+import { readErrorBody, SERVER_PROBLEM, SERVER_UNREACHABLE, type ErrorBody } from "@/lib/errors";
 
 /** The JSON body of an /api/chat error response. `error` is written for the user. */
-export type ChatErrorBody = { error: string };
+export type ChatErrorBody = ErrorBody;
 
 /** An /api/chat error response the chat shows as it is. */
 export function chatErrorResponse(message: string, status: number): Response {
   return Response.json({ error: message } satisfies ChatErrorBody, { status });
 }
-
-const SERVER_PROBLEM = "Something went wrong on the server. Try again.";
-const OFFLINE = "Couldn't reach the server. Check your connection and try again.";
 
 /**
  * What to tell the user about a failed chat request. Errors from the route
@@ -20,10 +18,10 @@ const OFFLINE = "Couldn't reach the server. Check your connection and try again.
  */
 export function chatErrorMessage(error: Error): string {
   if (APICallError.isInstance(error)) {
-    return readErrorBody(error.responseBody) ?? SERVER_PROBLEM;
+    return parseErrorBody(error.responseBody) ?? SERVER_PROBLEM;
   }
   // fetch() rejects with a TypeError when the network is down.
-  if (error instanceof TypeError) return OFFLINE;
+  if (error instanceof TypeError) return SERVER_UNREACHABLE;
   return error.message || SERVER_PROBLEM;
 }
 
@@ -42,12 +40,10 @@ export function unfinishedAnswerMessage(reason: FinishReason): string {
   }
 }
 
-function readErrorBody(body: string | undefined): string | null {
+function parseErrorBody(body: string | undefined): string | null {
   if (!body) return null;
   try {
-    const parsed: unknown = JSON.parse(body);
-    const message = (parsed as Partial<ChatErrorBody> | null)?.error;
-    return typeof message === "string" && message ? message : null;
+    return readErrorBody(JSON.parse(body));
   } catch {
     return null;
   }

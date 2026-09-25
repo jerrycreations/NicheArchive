@@ -1,5 +1,6 @@
 import { chatErrorResponse } from "@/lib/chat/errors";
 import { respondToChat } from "@/lib/chat/respond";
+import { serverErrorResponse } from "@/lib/errors";
 import { chatRequestSchema } from "@/lib/validation/chat";
 
 // postgres.js needs Node.js.
@@ -26,7 +27,6 @@ export async function POST(request: Request) {
     return await respondToChat(parsed.data);
   } catch (error) {
     // Failures before the answer starts, such as an unreachable database.
-    console.error("POST /api/chat failed:", error);
-    return chatErrorResponse("Something went wrong on the server. Try again.", 500);
+    return serverErrorResponse("POST /api/chat", error);
   }
 }

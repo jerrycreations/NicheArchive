@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { requestIndex } from "@/lib/search/reindex-client";
 
 /**
@@ -26,7 +27,7 @@ export function IndexStatusNotice({
     startTransition(async () => {
       const response = await requestIndex(youtubeId);
       if (response === null) {
-        toast.error("Couldn't reach the server. Try again.");
+        toast.error(SERVER_UNREACHABLE);
         return;
       }
       if (response.outcome === "indexed") toast.success("Library search can find this video now.");

@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { actionError } from "@/lib/actions/result";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { videoPath } from "@/lib/navigation";
 import { requestTranscript } from "@/lib/transcript/client";
 import { parseYouTubeUrl } from "@/lib/youtube/url";
@@ -45,7 +46,7 @@ export function AddVideoForm({ onDone }: { onDone?: () => void }) {
         result = await addVideo({ url, confirmLong });
       } catch {
         // Thrown rather than returned, e.g. a dropped connection.
-        result = actionError("Couldn't reach the server. Try again.");
+        result = actionError(SERVER_UNREACHABLE);
       }
 
       // Start on the transcript without waiting. If this request is lost, the

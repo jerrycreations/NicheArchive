@@ -1,3 +1,5 @@
+import type { VideoSort } from "@/lib/validation/video";
+
 /** The top bar's links, shared by the desktop links and the small-screen menu. */
 export const NAV_ITEMS = [
   { href: "/library", label: "Library" },
@@ -10,6 +12,19 @@ export const NAV_ITEMS = [
  */
 export function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * The library with a search and sort, leaving out the defaults, so a plain
+ * library is `/library` and a search is `/library?q=bread&sort=published`.
+ */
+export function libraryPath({ q = "", sort = "added" }: { q?: string; sort?: VideoSort } = {}) {
+  const params = new URLSearchParams();
+  const query = q.trim();
+  if (query) params.set("q", query);
+  if (sort !== "added") params.set("sort", sort);
+  const search = params.toString();
+  return search ? `/library?${search}` : "/library";
 }
 
 /** The page for one saved video, e.g. `/videos/dQw4w9WgXcQ`. */

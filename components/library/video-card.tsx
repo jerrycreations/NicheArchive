@@ -73,19 +73,30 @@ export function VideoCard({ video }: { video: VideoListItem }) {
   );
 }
 
-/** A placeholder with the card's shape, for loading states. */
+/**
+ * A placeholder with the card's shape, for loading states: a two-line title
+ * (22px lines), the channel, the status row, and room for the actions menu.
+ */
 export function VideoCardSkeleton() {
   return (
     <div className="flex flex-col gap-3">
-      <Skeleton className="aspect-video rounded-lg" />
-      <div className="flex flex-col gap-1">
-        <Skeleton className="h-5 w-11/12" />
-        <Skeleton className="h-5 w-2/3" />
-        <Skeleton className="mt-0.5 h-4 w-1/2" />
-        <div className="mt-1 flex gap-2">
-          <Skeleton className="h-5 w-20 rounded-4xl" />
-          <Skeleton className="h-5 w-28" />
+      <Skeleton className="aspect-video rounded-lg border" />
+      <div className="flex items-start gap-1">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex h-11 flex-col justify-around">
+            <Skeleton className="h-4 w-11/12" />
+            <Skeleton className="h-4 w-2/3" />
+          </div>
+          <div className="flex h-5 items-center">
+            <Skeleton className="h-3.5 w-1/2" />
+          </div>
+          <div className="mt-1 flex h-5 items-center gap-2">
+            <Skeleton className="h-5 w-24 rounded-4xl" />
+            <Skeleton className="h-3.5 w-28" />
+          </div>
         </div>
+        {/* Where the actions menu goes. */}
+        <div className="-mt-0.5 -mr-1.5 size-7 shrink-0" />
       </div>
     </div>
   );

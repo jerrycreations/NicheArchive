@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { actionError } from "@/lib/actions/result";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { chatPath } from "@/lib/navigation";
 
 /** Confirms deleting a chat, then goes back to /chats if that chat was open. */
@@ -42,7 +43,7 @@ export function DeleteChatDialog({
       try {
         result = await deleteChat(chatId);
       } catch {
-        result = actionError("Couldn't reach the server. Try again.");
+        result = actionError(SERVER_UNREACHABLE);
       }
       if (result.kind === "error") {
         toast.error(result.message);

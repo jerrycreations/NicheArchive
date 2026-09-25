@@ -1216,7 +1216,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 11: Search box, export and finishing touches (build order 5)
 
-- [ ] Step 44: Library search and sorting
+- [x] Step 44: Library search and sorting
   - **Task**: The library reads the `q` and `sort` (`added` or `published`) URL parameters, parsed with Zod and falling back to defaults.
     - With `q`, it matches `search_vector @@ websearch_to_tsquery('english', q)` **or** a case-insensitive match on `title` or `channel` (with `%` and `_` escaped, so partial words and very short queries still work). Results are ordered by `ts_rank` and then by the chosen sort.
     - The toolbar has a search box that updates the URL 300 ms after typing stops (`router.replace`, no history entries), a sort select, the result count and the library menu.
@@ -1234,8 +1234,17 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/library/no-results.tsx`: no-match state
   - **Step Dependencies**: Steps 8, 17, 39
   - **User Instructions**: None
+  - **Done with the search and sort in one client component, and Postgres notices turned off**:
+    - `components/library/library-controls.tsx` holds the search text and the sort, so a sort change never loses typing that hasn't reached the URL yet. `SearchInput` and `SortSelect` only show them.
+      - Typing replaces the URL 300 ms after it pauses, clearing the box does it at once, and Enter searches straight away. Escape and the × button clear it.
+      - While the box has focus the typed text stays; a URL change from outside, such as the Library link, only fills it in while it's unfocused.
+    - `libraryPath({ q, sort })` in `lib/navigation.ts` builds every library URL and leaves out the defaults.
+    - The count reads "14 videos", or "2 of 14 videos" while searching, as a polite live region. `countVideos()` runs only for a search.
+    - The query-parameter schema is in `lib/validation/library.ts`; `VIDEO_SORTS` stays in `lib/validation/video.ts`.
+    - Searching only stop words ("the") or symbols made Postgres send a NOTICE, which postgres.js prints. `lib/db/index.ts` now sets `onnotice: () => {}`.
+    - Checked in the dev server: "zoo", "zo", "rick", "Rick Ast", "elephants", "trunks", "knotsman", "snare trap" and "the" find the right videos. "%", "_" and "xyzzy" match nothing and show the no-results state. The search keeps focus and adds no history entries, "Clear search" works, and the sort keeps the search. `loading.tsx` didn't flash on a search, so the Suspense fallback wasn't needed.
 
-- [ ] Step 45: Export format and filenames
+- [x] Step 45: Export format and filenames
   - **Task**: `formatTranscriptFile(video)` produces exactly the spec's format: `Title:`, `Channel:`, `URL:` (from `buildWatchUrl`) and `Published:` (`YYYY-MM-DD`, UTC), a blank line, then `segmentsToParagraphs` separated by blank lines. The file is UTF-8 with a trailing newline.
 
     `sanitizeFilename(title, fallbackId)`:
@@ -1255,8 +1264,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/export/filenames.test.ts`: filename cases
   - **Step Dependencies**: Step 19
   - **User Instructions**: None
+  - **Done with a byte limit, leading dots trimmed, and the ` (n)` for repeats after every real title**:
+    - `sanitizeFilename` also trims leading dots, which would hide a file on macOS and Linux. It removes C1 control characters as well as C0 and DEL, and NFC-normalizes the title.
+    - Windows device names get a `_` after them (`CON_`, `aux_.txt`), including `COM0`, `LPT0` and the superscript forms.
+    - Names are cut between graphemes (`Intl.Segmenter`), at a space when one is in the last third. Besides the 120 code points, the whole name with ` (n)` and `.txt` stays within 240 bytes of UTF-8, since ext4 allows 255 bytes and 120 CJK characters take 360.
+    - `assignUniqueFilenames` reserves every name as given first, so a video titled "Bread (2)" keeps its name and a second "Bread" becomes "Bread (3)".
+    - `exportFilenames` and `exportFilename` add `.txt`, and `contentDisposition` builds the header with an ASCII stand-in and a UTF-8 `filename*`.
 
-- [ ] Step 46: Export routes and the browser-built ZIP
+- [x] Step 46: Export routes and the browser-built ZIP
   - **Task**: `GET /api/export` returns `{ files: [{ name, content }], skipped }` for every `ready` video, ordered by title, with unique names and `Cache-Control: no-store`.
     - `GET /api/export/[youtubeId]` returns one `text/plain; charset=utf-8` file with `Content-Disposition: attachment` and a `filename*=UTF-8''…` name, so non-ASCII titles survive.
     - `DownloadAllButton` sits in the library toolbar. It:
@@ -1276,8 +1291,15 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/video/video-meta.tsx`: add the button
   - **Step Dependencies**: Steps 27, 44, 45
   - **User Instructions**: Run `npm i jszip`.
+  - **Done with a streamed bundle, and the video page's download as a link-style button**:
+    - `GET /api/export` streams its JSON a file at a time. Vercel caps an unstreamed function response at 4.5 MB (Vercel docs, checked 2026-09-25), and a few hundred transcripts could pass that.
+    - Ready videos are ordered by title, then date added, so the earlier of two same-named videos keeps the plain name. `skipped` counts the videos that aren't ready.
+    - `GET /api/export/[youtubeId]` answers `400`, `404` or `409` with `{ error }`.
+    - `lib/export/client.ts` holds the two fetch helpers. `DownloadAllButton` sits in the library toolbar, icon-only on phones, and shows "Preparing…", then "Zipping n%".
+    - The video page's "Download transcript" sits in the header line after "Open on YouTube", styled like it, while the transcript is ready.
+    - Checked in the dev server: the ZIP held a `NicheArchive Transcripts/` folder with the 3 ready transcripts, and the toast said "1 video skipped: no transcript yet." The single-file route's headers and text were checked with curl.
 
-- [ ] Step 47: Error handling pass
+- [x] Step 47: Error handling pass
   - **Task**: Make failures look the same everywhere.
     - `lib/errors.ts` brings the YouTube, AI and database error kinds into one table of user-facing messages. Include "Can't reach the database. If the Supabase project is paused, restore it from the Supabase dashboard."
     - Add an error boundary for the route group, a global error page and a root not-found page, each with a readable message and a Retry button.
@@ -1293,8 +1315,19 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/ai/errors.ts`, `lib/youtube/errors.ts`: point to the shared messages
   - **Step Dependencies**: Steps 43, 46
   - **User Instructions**: None
+  - **Done with pages handling an unreachable database themselves, and the routes answering 503**:
+    - `lib/errors.ts` holds the AI and YouTube kinds with their messages, `SERVER_PROBLEM`, `SERVER_UNREACHABLE` and `DATABASE_UNREACHABLE`. `lib/ai/errors.ts`, `lib/youtube/errors.ts` and `lib/chat/errors.ts` import from it and export what they did before.
+    - `isDatabaseUnreachable` follows `cause` (Drizzle's wrapper) and AggregateErrors. It matches Node's and postgres.js's connection codes, SQLSTATE class 08 and 57P01–57P03, and Supavisor's "Tenant or user not found".
+    - `unexpectedError` in `lib/actions/result.ts` gives the database message whatever the action's own, so every action got it without changes.
+    - `serverErrorResponse` answers `503` with the database message or `500`. It's used by the chat, status, processing, export and cron routes. `/api/index/[youtubeId]` answers `{ outcome: "failed", reason: "database" }`, which the Retry notice and Re-index all already show.
+    - `requestTranscript` now returns `{ error }` rather than null, so Retry shows the route's message.
+    - Pages wrap their database reads in `unlessDatabaseDown` and render `DatabaseUnavailable` (`components/common/error-state.tsx`) with Retry. In production Next hides a server error's message from the error boundary, so the boundary alone couldn't say what went wrong.
+    - `app/(app)/error.tsx` and `app/global-error.tsx` use Next 16.3's `retry` and show the error's digest. `global-error.tsx` imports the styles and fonts and picks the theme itself.
+    - `app/not-found.tsx` brings the top bar and links back to the library instead of offering Retry.
+    - The rename dialog's validation message is now an alert.
+    - Checked with a dev server whose `DATABASE_URL` pointed at a closed port: the library, a search, a video, the Chats page, a chat and the chat list showed the message; the routes answered `503`; `.env.local` was untouched.
 
-- [ ] Step 48: Loading, empty states, mobile and removing the spike
+- [x] Step 48: Loading, empty states, mobile and removing the spike
   - **Task**: Final design pass against the brief.
     - Skeletons for the library, video and chats pages should match the real layouts, so nothing jumps when content loads.
     - Check every empty and waiting state: empty library, no search results, no chats, transcript processing, transcript failed, search index failed.
@@ -1311,8 +1344,17 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/dev/captions/page.tsx`, `app/api/dev/captions/route.ts`: delete
   - **Step Dependencies**: Step 47
   - **User Instructions**: Try the whole app once at phone width (browser dev tools or a real phone), especially the video page and an open chat, before accepting this step.
+  - **Done with the caption spike kept, its local column filled, and the phone tabs pinned**:
+    - The user chose to keep the spike page and route until they've filled `docs/caption-spike.md`'s Deployed column from a preview deployment. Delete `app/dev/captions/page.tsx` and `app/api/dev/captions/route.ts` after that.
+    - The Local column was filled on 2026-09-25. 7 of 10 returned captions; the other 3 have no English track, as expected. The Shorts rows are the user's own `vrIrDIA0GTM` and `QgI9hOqr7uw`, probed read-only.
+    - The skeletons now match their pages:
+      - The library skeleton mirrors the toolbar. Card title bars sit in 22px lines, with room for the menu.
+      - `chats/loading.tsx` matches a new chat, and a new `chats/[id]/loading.tsx` matches an open one. Both use `ComposerSkeleton` (`components/chat/composer.tsx`) at the messages' reading width.
+      - The video skeleton has the header's menu, the transcript header with Copy, a black player and a bordered chat panel.
+    - On phones the video page's tabs stick under the pinned player. The chat panel's height now allows for them and for the page's 2rem bottom padding: the old formula allowed only 1rem, so its top 16px had sat under the player. Measured at 375px: player 56–269, tabs 269–309, chat 309–780.
+    - Other phone fixes: the drawer clears the home indicator, the picker is never wider than the screen, and source cards are at most 85% of the row, so the next one peeks out.
 
-- [ ] Step 49: Database tests and CI
+- [x] Step 49: Database tests and CI
   - **Task**: Fill the remaining test gaps.
     - Add database integration tests that run every migration against PGlite with its vector extension. They check:
       - the generated `tsvector` columns fill in
@@ -1333,6 +1375,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `.github/workflows/ci.yml`: lint, typecheck, tests
   - **Step Dependencies**: Step 48
   - **User Instructions**: Run `npm i -D @electric-sql/pglite @electric-sql/pglite-pgvector @vitest/coverage-v8`. Since PGlite 0.5, pgvector ships as its own package: `import { vector } from "@electric-sql/pglite-pgvector"`. Run `set search_path to "$user", public, extensions` before applying the migrations, as on Supabase. Run `npm test`, `npm run test:db` and `npm run typecheck` locally and check that all three pass before pushing.
+  - **Done with a PGlite wrapper shaped like postgres.js, and two extra test files**:
+    - `vitest.config.mts` (not `.ts`) has `unit` and `db` projects, which inherit the root settings. `npm test` runs `unit`, `npm run test:db` runs `db`, and `npm run test:coverage` runs both.
+    - `tests/db/setup.ts` wraps PGlite's Drizzle client so `execute` resolves to the rows, as postgres.js does, because `hybridSearch` reads them that way. It also has `insertTestVideo` and `embedding` helpers.
+    - `tests/db/processing.test.ts` covers the claim and the fenced writes. `tests/db/video-queries.test.ts` covers Step 44's search and sort and Step 46's export queries.
+    - `hybrid_search` is tested directly with a small `match_count`, since `hybridSearch` always asks for 30; `hybridSearch` gets its own test for the embedding call and the mapping.
+    - `lib/youtube/captions.test.ts` covers every branch of `fetchCaptions`, with the library mocked and its real error classes kept.
+    - The workflow uses `actions/checkout@v7` and `actions/setup-node@v7`, the latest majors on 2026-09-25, with Node 22. It runs once the repo is pushed.
+    - 739 unit and 33 database tests pass. Line coverage over `lib` and `app` is 79%.
 
 - [ ] Step 50: End-to-end smoke test (optional)
   - **Task**: Add one Playwright test for the main path against a seeded local database. It opens a seeded video, sees its transcript, clicks a timestamp, sends a video-chat message with the AI route stubbed, and downloads the single transcript. It intercepts every request to Google and YouTube, so it never uses quota or depends on the network.
@@ -1343,8 +1393,9 @@ The spec leaves these open. Change any of them here before generating code.
     - `package.json`: `test:e2e` script
   - **Step Dependencies**: Step 49
   - **User Instructions**: Run `npm i -D @playwright/test`, then `npx playwright install chromium`. This step is optional; with two users and no public pages, testing by hand is reasonable.
+  - **Skipped (optional), at the user's choice, 2026-09-25.** The database tests and hand checks cover the main path.
 
-- [ ] Step 51: Deployment and documentation
+- [x] Step 51: Deployment and documentation
   - **Task**: Turn the README into real documentation. It should cover:
     - what the app does
     - every environment variable and where it comes from
@@ -1373,3 +1424,9 @@ The spec leaves these open. Change any of them here before generating code.
     1. In Vercel, add every variable from `.env.example` under **Settings → Environment Variables** for Production and Preview (`DATABASE_MIGRATION_URL` isn't needed there), then redeploy.
     2. Add one real video from start to finish. Check that the transcript arrives, that an "All my videos" question finds it, and that the ZIP unzips to a folder of `.txt` files.
     3. Share the URL with your friend.
+  - **Done with the region set, and per-route limits left in the route files**:
+    - `vercel.json` sets `regions: ["iad1"]`, next to Supabase's us-east-1. The time limits stay as `maxDuration` in each route, which is how Next.js sets them.
+    - The README covers what the app does, running it locally, every variable (the secret command now says `-base64` everywhere), migrations, deploying, the search index and re-indexing, the transcript chain with the local spike results, and testing and CI.
+    - `docs/troubleshooting.md` covers the plan's seven failures, plus local development: the `next dev` database hang, the IPv6-only Direct connection host, stale route types and one dev server per folder.
+    - `.env.example` already listed the final keys; its header now says which ones Vercel needs.
+    - The deployment steps are the user's: Vercel variables, a real video end to end, and the spike's Deployed column.

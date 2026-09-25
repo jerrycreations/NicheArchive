@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { actionError } from "@/lib/actions/result";
+import { SERVER_UNREACHABLE } from "@/lib/errors";
 import { videoPath } from "@/lib/navigation";
 
 /** e.g. "its transcript, its search index and 2 chats about it". */
@@ -50,7 +51,7 @@ export function DeleteVideoDialog({
       try {
         result = await deleteVideo(youtubeId);
       } catch {
-        result = actionError("Couldn't reach the server. Try again.");
+        result = actionError(SERVER_UNREACHABLE);
       }
       if (result.kind === "error") {
         toast.error(result.message);

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { NewChat } from "@/components/chats/new-chat";
+import { DatabaseUnavailable } from "@/components/common/error-state";
 import { CHAT_MODES, type ChatMode } from "@/lib/chat/types";
 import { listVideoOptions } from "@/lib/db/queries/videos";
 import type { VideoOption } from "@/lib/db/types";
+import { unlessDatabaseDown } from "@/lib/errors";
 
 export const metadata: Metadata = {
   title: "Chats",
@@ -13,7 +15,12 @@ export const metadata: Metadata = {
 export default async function ChatsPage({ searchParams }: PageProps<"/chats">) {
   // Database reads don't make a page dynamic on their own (see the library page).
   await connection();
-  const [params, videos] = await Promise.all([searchParams, listVideoOptions()]);
+  const [params, loaded] = await Promise.all([
+    searchParams,
+    unlessDatabaseDown(listVideoOptions),
+  ]);
+  if (!loaded.ok) return <DatabaseUnavailable />;
+  const videos = loaded.value;
   const { mode, youtubeId } = preselection(params, videos);
 
   // Keyed, so following a link with another preselection starts over.

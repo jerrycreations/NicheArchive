@@ -1,5 +1,7 @@
-// Why a Gemini call failed, and what to tell the user.
+// Why a Gemini call failed, and what to tell the user. The kinds and their
+// messages live with the app's other failures in lib/errors.ts.
 import { APICallError, NoObjectGeneratedError, RetryError } from "ai";
+import { AI_DAILY_LIMIT_MESSAGE, AI_ERROR_MESSAGES, type AiErrorKind } from "@/lib/errors";
 import {
   API_KEY_REASONS,
   errorReasons,
@@ -8,16 +10,7 @@ import {
   retryDelaySeconds,
 } from "@/lib/google/error-body";
 
-export const AI_ERROR_KINDS = [
-  "rate_limited",
-  "model_not_found",
-  "bad_key",
-  "blocked",
-  "unsupported_input",
-  "unknown",
-] as const;
-
-export type AiErrorKind = (typeof AI_ERROR_KINDS)[number];
+export { AI_ERROR_KINDS, type AiErrorKind } from "@/lib/errors";
 
 export type AiError =
   | {
@@ -28,23 +21,8 @@ export type AiError =
     }
   | { kind: Exclude<AiErrorKind, "rate_limited"> };
 
-const MESSAGES: Record<AiErrorKind, string> = {
-  rate_limited: "Gemini's free limit was reached. Try again in a minute.",
-  model_not_found:
-    "A Gemini model name in the server settings is missing or no longer available. Check GEMINI_CHAT_MODEL, GEMINI_REWRITE_MODEL and GEMINI_EMBEDDING_MODEL against AI Studio's model list.",
-  bad_key:
-    "The Gemini API key is missing or isn't valid. Check GOOGLE_GENERATIVE_AI_API_KEY in the server settings.",
-  blocked: "Gemini's safety filters blocked this.",
-  unsupported_input: "Gemini couldn't use what it was sent.",
-  unknown: "Gemini ran into a problem. Try again in a moment.",
-};
-
-// Google resets daily quotas at midnight Pacific time.
-const DAILY_LIMIT_MESSAGE =
-  "Gemini's free daily limit for this model was reached. It resets at midnight Pacific time.";
-
 export function aiErrorMessage(kind: AiErrorKind): string {
-  return MESSAGES[kind];
+  return AI_ERROR_MESSAGES[kind];
 }
 
 /**
@@ -52,7 +30,9 @@ export function aiErrorMessage(kind: AiErrorKind): string {
  * it tells a used-up daily limit apart, where waiting a minute won't help.
  */
 export function aiErrorText(error: AiError): string {
-  return error.kind === "rate_limited" && error.daily ? DAILY_LIMIT_MESSAGE : MESSAGES[error.kind];
+  return error.kind === "rate_limited" && error.daily
+    ? AI_DAILY_LIMIT_MESSAGE
+    : AI_ERROR_MESSAGES[error.kind];
 }
 
 /**
