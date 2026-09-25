@@ -751,7 +751,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 9: Chat (build order 3)
 
-- [ ] Step 28: Chat persistence and titles
+- [x] Step 28: Chat persistence and titles
   - **Task**: Chat queries:
     - `createChatIfMissing(id, mode, videoId)`: an upsert that fails if an existing row has a different mode or video
     - `getChat(id)`: with the joined video
@@ -778,8 +778,16 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/validation/chat.ts`: Zod schemas
   - **Step Dependencies**: Steps 8, 20
   - **User Instructions**: None
+  - **Done with the chat created inside `saveExchange`, and a fenced title prompt**:
+    - `createChatIfMissing({ id, mode, videoId }, tx?)` throws `ChatConflictError` for a mismatch. `saveExchange` calls it inside its own transaction, so a chat row only ever exists with its first exchange; a failed first answer leaves nothing behind.
+    - The queries behind the actions are `updateChatTitle` and `deleteChatById`; the actions keep the plan's names.
+    - A question and its answer share the transaction's `now()`, so `listMessages` orders by time and then role (the enum sorts `user` first).
+    - `generateChatTitle` makes one try with a 10-second timeout. `cleanGeneratedTitle` strips quotes, Markdown, a "Title:" label and a trailing period.
+    - The question goes to the title model inside `<message>` tags, with an instruction not to follow it: "Name one planet with rings. One word." had been titled "Saturn".
+    - New constants: `MAX_CHAT_MESSAGE_CHARS` (8,000), `MAX_GENERATED_TITLE_CHARS` (60) and `MAX_CHAT_TITLE_CHARS` (80).
+    - The queries were checked against PGlite with the real migrations: conflicts, rollback, message order, joins and cascades.
 
-- [ ] Step 29: Prompt and context builders
+- [x] Step 29: Prompt and context builders
   - **Task**: Write the pure prompt-building functions.
     - `formatTranscriptForPrompt(segments)`: lines of the form `[m:ss] text`, merging cues into lines of about 15 seconds to save tokens.
     - `videoSystemPrompt(video)`: title, channel, the full timestamped transcript and these rules:
@@ -798,8 +806,12 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/chat/starters.ts`: starter prompts
   - **Step Dependencies**: Steps 3, 4
   - **User Instructions**: None
+  - **Done with more rules in the video prompt**: `PROMPT_LINE_SECONDS` is 15. Besides the plan's rules, the video prompt:
+    - asks Gemini to read past auto-caption misspellings
+    - asks it to call timestamps approximate when pasted text had none
+    - asks it to paraphrase and quote only a few words, since Gemini's recitation filter cuts off answers that quote well-known text (Step 30)
 
-- [ ] Step 30: Chat API route for video and general modes
+- [x] Step 30: Chat API route for video and general modes
   - **Task**: `POST /api/chat` takes `{ chatId, mode, youtubeId?, message: { id, text } }`, validated with Zod. It sets `maxDuration = 60`.
     - It calls `createChatIfMissing`. For an existing chat, the mode stored in the database wins over what the client sent.
     - Video mode: load the video. If its transcript isn't `ready`, return `409` with "This video's transcript isn't ready yet."
@@ -816,8 +828,15 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/validation/chat.ts`: request body schema
   - **Step Dependencies**: Steps 28, 29
   - **User Instructions**: None
+  - **Done with the title started beside the answer, unfinished answers dropped, and a daily-limit message**:
+    - Errors before the stream answer with JSON `{ error }` and a status: `400`, `404` (the video is gone), `409`, `501`, `503` (Gemini settings missing) or `500`. `chatErrorMessage` in `lib/chat/errors.ts` reads them in the browser.
+    - The title call starts beside the answer, and the answer's `onEnd` saves the title before the stream closes, so the refresh after a reply already shows it. The plan's `after()` would have missed that refresh.
+    - The server makes the answer's ID and sends it in the stream, so the browser's copy and the saved one match.
+    - Gemini can end an answer early; its RECITATION filter cut a "Me at the zoo" summary off mid-sentence. Any finish reason other than `stop` isn't saved, and the browser treats it as failed, with a message chosen by the reason (`unfinishedAnswerMessage`).
+    - A 429 whose QuotaFailure names a per-day quota reads "Gemini's free daily limit for this model was reached. It resets at midnight Pacific time." Waiting a minute wouldn't help there. This uses `aiErrorText` and `exceededQuotaIds`; transcription still uses the per-minute message.
+    - On 2026-09-24 the free tier allowed `gemini-3.8-flash` only 20 requests a day per project. It serves both chat and transcription.
 
-- [ ] Step 31: Chat UI building blocks
+- [x] Step 31: Chat UI building blocks
   - **Task**: `useArchiveChat({ chatId, mode, youtubeId, initialMessages })` wraps `useChat`. It uses `DefaultChatTransport`, and `prepareSendMessagesRequest` sends only the chat ID, mode, video and latest message.
     - `ChatPanel` combines the parts below and accepts `onFirstMessageSent`, used to update the URL.
     - `MessageList` scrolls to the bottom as text streams in, but not if the user has scrolled up. It shows a typing indicator while waiting.
@@ -840,8 +859,15 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/chat/timestamps.test.ts`: matching and non-matching cases
   - **Step Dependencies**: Steps 25, 30
   - **User Instructions**: Run `npm i react-markdown remark-gfm`.
+  - **Done with a remark plugin for citations, and links for every timestamp**:
+    - Citations are linked by a remark plugin, `lib/chat/remark-citations.ts`, rather than a text renderer, so text in code and in existing links stays as it is. It also handles ranges (`[2:15–2:40]`, which link their start) and lists (`[2:15, 3:40]`). A bracket with a citation it can't place stays as written.
+    - `TimestampLink` is always a link to `/videos/<id>?t=<seconds>`. On a video's page a plain click seeks the player instead of following it. A button had let a line break fall between the chip and the period after it.
+    - When a question fails, `useArchiveChat` takes it and any partial answer back out, puts the text back in the composer, and shows `ChatError` with Retry. Stop keeps what arrived; the server still reads to the end and saves the whole answer.
+    - `ChatPanel` also takes `renderHeader({ started })`, `renderEmpty(send)`, `notice`, `disabled` and `startWith`, a first question it sends once.
+    - Messages and the composer keep a reading width (`max-w-3xl`) in wide chats.
+    - AI SDK 7's `useChat` keeps one `Chat` per ID but reads the latest transport through a ref, so a mode or video chosen after mounting reaches the request.
 
-- [ ] Step 32: Chat on the video page
+- [x] Step 32: Chat on the video page
   - **Task**: Fill in the chat side of the video page.
     - If the video already has chats, open the most recent one and show a "New chat" button and a small list of earlier chats that link to `/chats/<id>`.
     - Otherwise, show the starter prompts (Summarize, Key takeaways, Outline). Clicking one creates a chat with a new UUID and sends that prompt in a single click.
@@ -854,8 +880,12 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/(app)/videos/[youtubeId]/page.tsx`: load this video's chats and the latest chat's messages
   - **Step Dependencies**: Steps 27, 31
   - **User Instructions**: None
+  - **Done with an "Earlier" menu and a bounded chat on phones**:
+    - The chat's header holds its title, an "Earlier" menu (with `RelativeTime` times) and New chat. `formatRelativeTime` gives "just now", "5m ago" or "2d ago", then the date after a week, from a `now` taken when the server renders.
+    - Below `lg`, the chat slot fills the screen under the pinned player (`--player-h`), so its messages scroll inside and the composer stays reachable.
+    - The page's grid now sets `grid-cols-1` below `lg`: a long generated title had widened the implicit `auto` column past a phone's screen.
 
-- [ ] Step 33: Chats page list and layout
+- [x] Step 33: Chats page list and layout
   - **Task**: `app/(app)/chats/layout.tsx` puts the chat list on the left and the page content on the right.
     - Each list row shows a mode icon and label, a thumbnail and the video title for video chats, the chat title and a relative time. The open chat is highlighted.
     - On mobile, the list moves into a `Sheet` drawer opened from a header button.
@@ -875,8 +905,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/chats/empty-chats.tsx`: empty state
   - **Step Dependencies**: Step 31
   - **User Instructions**: None
+  - **Done with a streamed list and a client `ChatView`**:
+    - The layout streams the list in its own `Suspense` boundary, so opening a chat doesn't wait for it, and `loading.tsx` covers only the open chat. The section's height is `100dvh` less the top bar, its 1px border and the page padding.
+    - Below `lg`, an "All chats N" button opens the drawer, which is 90vw wide so rows keep their mode and time.
+    - `components/chats/chat-view.tsx` is the client side of `/chats/[id]`: `ChatHeader` above a `ChatPanel` that refreshes after each reply. IDs that aren't UUIDs go straight to not-found.
+    - Mode names, placeholders and "Untitled chat" live in `lib/chat/modes.ts`, and `ChatModeIcon` in `components/chats/mode-icon.tsx`.
 
-- [ ] Step 34: New chat with mode choice
+- [x] Step 34: New chat with mode choice
   - **Task**: The `/chats` index shows `NewChat`.
     - A segmented control (`ToggleGroup`) offers One video, All my videos and Gemini only, defaulting to **All my videos**.
     - One video shows a searchable picker (`Command` inside a `Popover`) that filters by title and channel. Its options come from `listVideoOptions()` (ID, title, channel, status). Videos without a ready transcript are shown but disabled, with their status.
@@ -891,8 +926,14 @@ The spec leaves these open. Change any of them here before generating code.
     - `app/(app)/chats/page.tsx`: render `NewChat` with the preselection from search params
   - **Step Dependencies**: Step 33
   - **User Instructions**: None
+  - **Done with the address changed once the first answer is saved**:
+    - `replaceState` runs when the first reply finishes, not when it's sent. The chat isn't saved until then, so reloading `/chats/<id>` mid-answer would have shown not-found.
+    - The `router.refresh()` that follows renders the chat's own page in place of `NewChat`, with its title. The swap comes after the stream, and `lib/chat/composer-focus.ts` carries the composer's focus across it.
+    - All my videos can be chosen, but asking is disabled until Step 42, with the route's own 501 wording (`LIBRARY_CHAT_UNAVAILABLE`).
+    - Once a ready video is chosen, the starter prompts show.
+    - `takePendingStart` validates with Zod and drops anything over a minute old, so a stale question is never sent. It's tested.
 
-- [ ] Step 35: Rename and delete chats
+- [x] Step 35: Rename and delete chats
   - **Task**: Add a chat overflow menu to each list row and to the chat header.
     - Rename opens a dialog with the current title filled in. It checks for 1 to 80 characters and updates the title right away, restoring the old one if saving fails.
     - Delete asks for confirmation, removes the chat and its messages, refreshes the list and goes to `/chats` if that chat was open.
@@ -904,6 +945,21 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/chats/chat-header.tsx`: add the menu
   - **Step Dependencies**: Step 34
   - **User Instructions**: None
+  - **Done with `useOptimistic` wherever the title shows**:
+    - The list row and the header each hold the title in `useOptimistic`. The rename runs in a transition, so a failure brings the old title back by itself, and a toast says why.
+    - Delete follows the video's dialog: it navigates inside the transition, so the deleted chat's not-found page never flashes.
+    - Section 9 was checked live in a production build. The chat model's daily quota was used up, so the server ran with `GEMINI_CHAT_MODEL` set to `gemini-3.5-flash-lite` in its own environment; `.env.local` was left alone. Checked:
+      - streaming, saving and titles
+      - follow-ups with history
+      - the 429 path with Retry and the question back in the composer
+      - seeking from answers on the video page, and links to `?t=` from the Chats page
+      - new chats in each mode, with the picker's search and disabled videos
+      - `?mode=` and `?video=` preselection, and the pending-start handoff
+      - rename, including a failure that reverted
+      - deleting the open chat and one in the list
+      - not-found for a missing ID and a malformed one
+      - the empty list
+      - no sideways scroll at 320px, and the desktop columns at 1440×900
 
 ---
 

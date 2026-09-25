@@ -17,6 +17,11 @@ export function videoPath(youtubeId: string): string {
   return `/videos/${youtubeId}`;
 }
 
+/** The page for one saved chat. */
+export function chatPath(chatId: string): string {
+  return `/chats/${chatId}`;
+}
+
 // Seconds (`95`, `95s`) or YouTube's own form (`1h2m3s`, `1m30`).
 const START_PARAM = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/;
 

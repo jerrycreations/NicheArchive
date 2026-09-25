@@ -8,8 +8,14 @@ import { cn } from "@/lib/utils";
 // `lg`, the player sits over the transcript on the left and the chat fills
 // the right. The second row is flexible, so a chat taller than the player and
 // transcript together adds space below the transcript, not under the player.
+//
+// Below `lg` the one column is `minmax(0, 1fr)`, since an `auto` column
+// would widen past the screen for a long unwrapped line, such as a chat title.
+//
+// `--player-h` is the pinned player's height below `lg`: the content width
+// (the screen less the page padding) at 16:9, capped like PLAYER_BOX.
 const GRID =
-  "grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr] lg:gap-x-6";
+  "grid grid-cols-1 items-start gap-4 [--player-h:min(calc((100vw-2rem)*9/16),55dvh)] sm:[--player-h:min(calc((100vw-3rem)*9/16),55dvh)] lg:grid-cols-[minmax(0,1fr)_400px] lg:grid-rows-[auto_1fr] lg:gap-x-6";
 
 // Pinned under the 3.5rem top bar, so timestamps far down the transcript
 // still play in view. The grid is the sticky element's containing block, so
@@ -24,8 +30,12 @@ const PLAYER_BOX = "w-full max-w-[calc(55dvh*16/9)]";
 // `pt-2`) whether or not the page has scrolled. It ends 2rem above the bottom
 // of the screen, where the page's bottom padding ends the grid, so reaching
 // the end of the page doesn't push it up.
+//
+// Below `lg`, once scrolled to, it fills the screen under the pinned player:
+// less the top bar (3.5rem), the player slot's padding (1.25rem), the player
+// and 1rem to spare. The messages scroll inside, so the composer stays in view.
 const CHAT_SLOT =
-  "lg:sticky lg:top-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-2 lg:h-[calc(100dvh-6rem)]";
+  "h-[calc(100dvh-5.75rem-var(--player-h))] min-h-80 lg:sticky lg:top-16 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:mt-2 lg:h-[calc(100dvh-6rem)] lg:min-h-0";
 
 // Both panels stay mounted, so switching tabs on a phone never resets the chat.
 // From `lg` there are no tabs, and both panels show.
@@ -35,9 +45,11 @@ const PANEL = "text-base max-lg:data-[state=inactive]:hidden";
 export function VideoPageLayout({
   player,
   transcript,
+  chat,
 }: {
   player: React.ReactNode;
   transcript: React.ReactNode;
+  chat: React.ReactNode;
 }) {
   return (
     <Tabs defaultValue="transcript" className={GRID}>
@@ -58,19 +70,9 @@ export function VideoPageLayout({
         {transcript}
       </TabsContent>
       <TabsContent value="chat" forceMount tabIndex={-1} className={cn(PANEL, CHAT_SLOT)}>
-        <ChatPlaceholder />
+        {chat}
       </TabsContent>
     </Tabs>
-  );
-}
-
-// Step 32 puts the video's chat here.
-function ChatPlaceholder() {
-  return (
-    <section className="flex h-full min-h-64 flex-col gap-1 rounded-lg border p-4">
-      <h2 className="font-medium">Chat</h2>
-      <p className="text-sm text-muted-foreground">Questions about this video will appear here.</p>
-    </section>
   );
 }
 

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { errorMessage, errorReasons, errorStatus, retryDelaySeconds } from "./error-body";
+import {
+  errorMessage,
+  errorReasons,
+  errorStatus,
+  exceededQuotaIds,
+  retryDelaySeconds,
+} from "./error-body";
 
 const body = {
   error: {
@@ -21,6 +27,21 @@ describe("Google error bodies", () => {
     expect(errorReasons(body)).toEqual(["rateLimitExceeded", "RATE_LIMIT_EXCEEDED"]);
   });
 
+  it("reads the exceeded quotas from QuotaFailure entries", () => {
+    const quotaBody = {
+      error: {
+        details: [
+          { "@type": "type.googleapis.com/google.rpc.Help", links: [] },
+          {
+            "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+            violations: [{ quotaId: "PerDay-FreeTier" }, { quotaId: 20 }, "x"],
+          },
+        ],
+      },
+    };
+    expect(exceededQuotaIds(quotaBody)).toEqual(["PerDay-FreeTier"]);
+  });
+
   it.each([
     ["7s", 7],
     ["1.2s", 2],
@@ -36,6 +57,7 @@ describe("Google error bodies", () => {
       expect(errorMessage(value)).toBeUndefined();
       expect(errorReasons(value)).toEqual([]);
       expect(retryDelaySeconds(value)).toBeUndefined();
+      expect(exceededQuotaIds(value)).toEqual([]);
     },
   );
 });

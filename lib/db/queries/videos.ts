@@ -2,7 +2,13 @@ import "server-only";
 import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { chats, videos } from "@/lib/db/schema";
-import type { NewVideo, VideoDetail, VideoListItem, VideoRow } from "@/lib/db/types";
+import type {
+  NewVideo,
+  VideoDetail,
+  VideoListItem,
+  VideoOption,
+  VideoRow,
+} from "@/lib/db/types";
 import {
   effectiveStatus,
   staleCutoff,
@@ -72,6 +78,27 @@ export async function listVideos({
 
   const now = new Date();
   return rows.map((row) => ({ ...row, status: effectiveStatus(row, now).status }));
+}
+
+/** Every video for the new-chat picker, newest first, with its effective status. */
+export async function listVideoOptions(): Promise<VideoOption[]> {
+  const rows = await db()
+    .select({
+      id: videos.id,
+      youtubeId: videos.youtubeId,
+      title: videos.title,
+      channel: videos.channel,
+      status: videos.status,
+      processingStartedAt: videos.processingStartedAt,
+    })
+    .from(videos)
+    .orderBy(desc(videos.createdAt));
+
+  const now = new Date();
+  return rows.map(({ processingStartedAt, ...row }) => ({
+    ...row,
+    status: effectiveStatus({ status: row.status, processingStartedAt }, now).status,
+  }));
 }
 
 /** Transcript states for the status route. Videos that don't exist are left out. */

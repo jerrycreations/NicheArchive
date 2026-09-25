@@ -45,8 +45,23 @@ export const RRF_K = 50;
  */
 export const MIN_SEMANTIC_SIMILARITY = 0.6;
 
+/**
+ * A transcript sent with a chat is merged into lines of about this many
+ * seconds, each with one timestamp, which saves tokens over one per cue.
+ */
+export const PROMPT_LINE_SECONDS = 15;
+
 /** Earlier messages sent to Gemini with each new message. */
 export const CHAT_HISTORY_LIMIT = 20;
+
+/** Longest chat message accepted, a few pages of text. */
+export const MAX_CHAT_MESSAGE_CHARS = 8_000;
+
+/** Titles generated from a chat's first question are cut to this length. */
+export const MAX_GENERATED_TITLE_CHARS = 60;
+
+/** Longest title someone can give a chat when renaming it. */
+export const MAX_CHAT_TITLE_CHARS = 80;
 
 /**
  * Transcript text sent with a library question, about 50k tokens. Enough for

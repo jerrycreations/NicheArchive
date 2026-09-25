@@ -5,8 +5,12 @@ import { cache } from "react";
 import { PlayerProvider } from "@/components/player/player-provider";
 import { YouTubePlayer } from "@/components/player/youtube-player";
 import { TranscriptPanel } from "@/components/video/transcript-panel";
+import { VideoChat } from "@/components/video/video-chat";
 import { VideoMeta } from "@/components/video/video-meta";
 import { VideoPageLayout } from "@/components/video/video-page-layout";
+import { toUIMessages } from "@/lib/chat/messages";
+import { listChatsForVideo } from "@/lib/db/queries/chats";
+import { listMessages } from "@/lib/db/queries/messages";
 import { getVideoDetail } from "@/lib/db/queries/videos";
 import { parseStartParam } from "@/lib/navigation";
 import { isVideoId } from "@/lib/youtube/url";
@@ -34,6 +38,10 @@ export default async function VideoPage({ params, searchParams }: PageProps<"/vi
   const { t } = await searchParams;
   const startSeconds = parseStartParam(t, video.durationSeconds);
 
+  // The chat column opens the most recent chat.
+  const chats = await listChatsForVideo(video.id);
+  const latestMessages = chats[0] ? toUIMessages(await listMessages(chats[0].id)) : [];
+
   return (
     // Keyed, so moving to another video starts a fresh player.
     <PlayerProvider key={video.youtubeId}>
@@ -48,6 +56,15 @@ export default async function VideoPage({ params, searchParams }: PageProps<"/vi
             />
           }
           transcript={<TranscriptPanel video={video} />}
+          chat={
+            <VideoChat
+              youtubeId={video.youtubeId}
+              status={video.status}
+              chats={chats.map(({ id, title, updatedAt }) => ({ id, title, updatedAt }))}
+              latestMessages={latestMessages}
+              now={new Date()}
+            />
+          }
         />
       </div>
     </PlayerProvider>

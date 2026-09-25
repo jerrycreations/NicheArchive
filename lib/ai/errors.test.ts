@@ -1,6 +1,6 @@
 import { APICallError, NoObjectGeneratedError, RetryError, type LanguageModelUsage } from "ai";
 import { describe, expect, it } from "vitest";
-import { AiConfigError, aiErrorMessage, classifyAiError } from "./errors";
+import { AiConfigError, aiErrorMessage, aiErrorText, classifyAiError } from "./errors";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
 
@@ -43,6 +43,29 @@ describe("classifyAiError", () => {
       { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "36.5s" },
     ]);
     expect(classifyAiError(error)).toEqual({ kind: "rate_limited", retryAfterSeconds: 37 });
+  });
+
+  it("tells a used-up daily quota from a per-minute one", () => {
+    const quotaFailure = (quotaId: string) => ({
+      "@type": "type.googleapis.com/google.rpc.QuotaFailure",
+      violations: [
+        {
+          quotaMetric: "generativelanguage.googleapis.com/generate_content_free_tier_requests",
+          quotaId,
+          quotaValue: "20",
+        },
+      ],
+    });
+    const retryInfo = { "@type": "type.googleapis.com/google.rpc.RetryInfo", retryDelay: "38s" };
+
+    expect(
+      classifyAiError(
+        quotaExceeded([quotaFailure("GenerateRequestsPerDayPerProjectPerModel-FreeTier"), retryInfo]),
+      ),
+    ).toEqual({ kind: "rate_limited", retryAfterSeconds: 38, daily: true });
+    expect(
+      classifyAiError(quotaExceeded([quotaFailure("GenerateRequestsPerMinutePerProjectPerModel-FreeTier")])),
+    ).toEqual({ kind: "rate_limited" });
   });
 
   it("prefers a Retry-After header", () => {
@@ -143,6 +166,16 @@ describe("aiErrorMessage", () => {
     expect(aiErrorMessage("rate_limited")).toBe(
       "Gemini's free limit was reached. Try again in a minute.",
     );
+  });
+
+  it("says when a daily limit resets, instead of waiting a minute", () => {
+    expect(aiErrorText({ kind: "rate_limited", daily: true })).toBe(
+      "Gemini's free daily limit for this model was reached. It resets at midnight Pacific time.",
+    );
+    expect(aiErrorText({ kind: "rate_limited", retryAfterSeconds: 20 })).toBe(
+      aiErrorMessage("rate_limited"),
+    );
+    expect(aiErrorText({ kind: "blocked" })).toBe(aiErrorMessage("blocked"));
   });
 
   it("names the setting to check for a bad key", () => {

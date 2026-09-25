@@ -4,6 +4,7 @@ import {
   API_KEY_REASONS,
   errorReasons,
   errorStatus,
+  exceededQuotaIds,
   retryDelaySeconds,
 } from "@/lib/google/error-body";
 
@@ -19,7 +20,12 @@ export const AI_ERROR_KINDS = [
 export type AiErrorKind = (typeof AI_ERROR_KINDS)[number];
 
 export type AiError =
-  | { kind: "rate_limited"; retryAfterSeconds?: number }
+  | {
+      kind: "rate_limited";
+      retryAfterSeconds?: number;
+      /** The free tier's requests per day ran out, not its per minute. */
+      daily?: boolean;
+    }
   | { kind: Exclude<AiErrorKind, "rate_limited"> };
 
 const MESSAGES: Record<AiErrorKind, string> = {
@@ -33,8 +39,20 @@ const MESSAGES: Record<AiErrorKind, string> = {
   unknown: "Gemini ran into a problem. Try again in a moment.",
 };
 
+// Google resets daily quotas at midnight Pacific time.
+const DAILY_LIMIT_MESSAGE =
+  "Gemini's free daily limit for this model was reached. It resets at midnight Pacific time.";
+
 export function aiErrorMessage(kind: AiErrorKind): string {
   return MESSAGES[kind];
+}
+
+/**
+ * What to tell the user about a classified error. Unlike aiErrorMessage,
+ * it tells a used-up daily limit apart, where waiting a minute won't help.
+ */
+export function aiErrorText(error: AiError): string {
+  return error.kind === "rate_limited" && error.daily ? DAILY_LIMIT_MESSAGE : MESSAGES[error.kind];
 }
 
 /**
@@ -76,9 +94,12 @@ function classifyApiCallError(error: APICallError): AiError {
   if (code === 429 || status === "RESOURCE_EXHAUSTED") {
     const retryAfterSeconds =
       retryAfterHeaderSeconds(error.responseHeaders) ?? retryDelaySeconds(body);
-    return retryAfterSeconds === undefined
-      ? { kind: "rate_limited" }
-      : { kind: "rate_limited", retryAfterSeconds };
+    const daily = exceededQuotaIds(body).some((quotaId) => /PerDay/i.test(quotaId));
+    return {
+      kind: "rate_limited",
+      ...(retryAfterSeconds === undefined ? {} : { retryAfterSeconds }),
+      ...(daily ? { daily } : {}),
+    };
   }
   // An invalid key comes back as a 400 INVALID_ARGUMENT, so this goes first.
   if (

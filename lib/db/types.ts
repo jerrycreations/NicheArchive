@@ -30,6 +30,12 @@ export type VideoListItem = Pick<
 > & { chatCount: number };
 
 /**
+ * A video as the new-chat picker offers it. `status` is the effective one;
+ * only ready videos can be chosen.
+ */
+export type VideoOption = Pick<VideoRow, "id" | "youtubeId" | "title" | "channel" | "status">;
+
+/**
  * A video as its own page shows it. `status` and `errorMessage` are the
  * effective ones, as in VideoListItem. `chatCount` is for the delete dialog.
  */

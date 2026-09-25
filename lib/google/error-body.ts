@@ -47,6 +47,21 @@ export function errorMessage(body: unknown): string | undefined {
   return typeof message === "string" ? message : undefined;
 }
 
+/**
+ * The quotas a QuotaFailure entry says were exceeded, such as
+ * "GenerateRequestsPerDayPerProjectPerModel-FreeTier".
+ */
+export function exceededQuotaIds(body: unknown): string[] {
+  const details = errorObject(body)?.details;
+  if (!Array.isArray(details)) return [];
+  return details
+    .flatMap((detail) =>
+      isRecord(detail) && Array.isArray(detail.violations) ? detail.violations : [],
+    )
+    .map((violation) => (isRecord(violation) ? violation.quotaId : undefined))
+    .filter((quotaId): quotaId is string => typeof quotaId === "string");
+}
+
 /** Seconds from a RetryInfo entry's `retryDelay`, such as "37s" or "1.5s", rounded up. */
 export function retryDelaySeconds(body: unknown): number | undefined {
   const details = errorObject(body)?.details;
