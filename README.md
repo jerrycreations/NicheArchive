@@ -1,6 +1,6 @@
 # NicheArchive
 
-A web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. It runs entirely on free tiers.
+A web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. It runs entirely on free tierss.
 
 - Spec: [docs/spec-opus5-5.md](docs/spec-opus5-5.md)
 - Build plan: [docs/plan-opus5-5.md](docs/plan-opus5-5.md)
