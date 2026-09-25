@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, isNull, lt, ne, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { chats, videos } from "@/lib/db/schema";
 import type {
@@ -101,6 +101,78 @@ export async function listVideoOptions(): Promise<VideoOption[]> {
   }));
 }
 
+/**
+ * Ready videos for "Re-index all", newest first. Without `all`, only those
+ * that need it: never indexed, indexed with another embedding model, or
+ * whose last try failed.
+ */
+export async function listIndexCandidates({
+  all,
+  model,
+}: {
+  all: boolean;
+  /** The current embedding model. */
+  model: string;
+}): Promise<string[]> {
+  const rows = await db()
+    .select({ youtubeId: videos.youtubeId })
+    .from(videos)
+    .where(
+      and(
+        eq(videos.status, "ready"),
+        all
+          ? undefined
+          : or(
+              isNull(videos.indexedAt),
+              isNull(videos.indexedModel),
+              ne(videos.indexedModel, model),
+              isNotNull(videos.indexError),
+            ),
+      ),
+    )
+    .orderBy(desc(videos.createdAt));
+  return rows.map((row) => row.youtubeId);
+}
+
+/** What a library answer needs of each video it's sent. */
+export type LibraryVideo = Pick<
+  VideoRow,
+  "id" | "youtubeId" | "title" | "channel" | "durationSeconds" | "timestampsEstimated"
+> & { transcriptSegments: TranscriptSegment[] };
+
+/**
+ * These videos with their transcripts, for a library answer. Videos deleted
+ * since the search, or whose transcript isn't ready, are left out.
+ */
+export async function listLibraryVideos(ids: readonly string[]): Promise<LibraryVideo[]> {
+  if (ids.length === 0) return [];
+  const rows = await db()
+    .select({
+      id: videos.id,
+      youtubeId: videos.youtubeId,
+      title: videos.title,
+      channel: videos.channel,
+      durationSeconds: videos.durationSeconds,
+      timestampsEstimated: videos.timestampsEstimated,
+      transcriptSegments: videos.transcriptSegments,
+    })
+    .from(videos)
+    .where(and(inArray(videos.id, [...ids]), eq(videos.status, "ready")));
+  return rows.flatMap(({ transcriptSegments, ...video }) =>
+    transcriptSegments ? [{ ...video, transcriptSegments }] : [],
+  );
+}
+
+/** Which of these YouTube IDs are still in the library. */
+export async function existingYoutubeIds(youtubeIds: readonly string[]): Promise<Set<string>> {
+  if (youtubeIds.length === 0) return new Set();
+  const rows = await db()
+    .select({ youtubeId: videos.youtubeId })
+    .from(videos)
+    .where(inArray(videos.youtubeId, [...youtubeIds]));
+  return new Set(rows.map((row) => row.youtubeId));
+}
+
 /** Transcript states for the status route. Videos that don't exist are left out. */
 export async function listVideoStatuses(youtubeIds: string[]): Promise<TranscriptStatusInfo[]> {
   if (youtubeIds.length === 0) return [];
@@ -162,6 +234,9 @@ export type TranscriptValues = {
  * taken the video over since: a paste, or a retry after the run stalled. A
  * paste passes none, so it always lands, and a run still going for the video
  * can't overwrite it. Returns whether the video was updated.
+ *
+ * The search index no longer matches, so the video shows as needing
+ * indexing until indexVideo runs. Its old chunks stay searchable till then.
  */
 export async function writeTranscript(
   videoId: string,
@@ -178,6 +253,9 @@ export async function writeTranscript(
       status: "ready",
       errorMessage: null,
       processingStartedAt: null,
+      indexedAt: null,
+      indexedModel: null,
+      indexError: null,
     })
     .where(
       claimedAt

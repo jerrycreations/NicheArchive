@@ -2,6 +2,7 @@ import "server-only";
 import { transcribeWithGemini } from "@/lib/ai/transcribe";
 import { markTranscriptFailed, writeTranscript } from "@/lib/db/queries/videos";
 import type { VideoRow } from "@/lib/db/types";
+import { indexVideo } from "@/lib/search/index-video";
 import { formatStageReasons, type StageReason } from "@/lib/transcript/status";
 import { cleanSegments, segmentsToPlainText } from "@/lib/transcript/text";
 import type { TranscriptSegment, TranscriptSource } from "@/lib/transcript/types";
@@ -9,6 +10,10 @@ import { fetchCaptions } from "@/lib/youtube/captions";
 
 // Callers must run on the Node.js runtime (`runtime = "nodejs"`), which the
 // caption adapter needs.
+
+// The processing route's 300 seconds, counted from the claim, less time for
+// indexing to record a failure before the function is stopped.
+const PROCESSING_TIME_LIMIT_MS = 290_000;
 
 export type PipelineVideo = Pick<VideoRow, "id" | "youtubeId" | "durationSeconds" | "privacyStatus">;
 
@@ -58,10 +63,10 @@ export async function resolveTranscript(video: PipelineVideo): Promise<ResolvedT
 }
 
 /**
- * Gets a claimed video's transcript and saves it, or marks the video failed
- * with each source's reason. Never throws. Its writes are fenced by
- * `claimedAt`, so a run that was overtaken, by a paste or by a retry after it
- * stalled, changes nothing.
+ * Gets a claimed video's transcript and saves it, then builds its library
+ * search index, or marks the video failed with each source's reason. Never
+ * throws. Its writes are fenced by `claimedAt`, so a run that was overtaken,
+ * by a paste or by a retry after it stalled, changes nothing.
  */
 export async function processVideoTranscript(
   video: PipelineVideo,
@@ -85,6 +90,12 @@ export async function processVideoTranscript(
       console.warn(
         `Transcript ${video.youtubeId}: a paste or a newer run took over, so this result was dropped.`,
       );
+      return;
+    }
+    if (result.ok) {
+      // Whatever time the transcript left; indexing records a failure itself.
+      const remainingMs = claimedAt.getTime() + PROCESSING_TIME_LIMIT_MS - Date.now();
+      await indexVideo(video.id, { abortSignal: AbortSignal.timeout(Math.max(0, remainingMs)) });
     }
   } catch (error) {
     console.error(`Transcript ${video.youtubeId}: processing failed:`, error);

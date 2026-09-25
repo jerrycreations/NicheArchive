@@ -51,6 +51,8 @@ Set these in `.env.local` for development and in **Vercel → Project → Settin
 
 Google changes model names often. Check the three model names against AI Studio's current model list, because an outdated name only fails when it's called.
 
+After changing `GEMINI_EMBEDDING_MODEL`, open the library's **⋯** menu and choose **Re-index all**. Each video records the model it was indexed with, so the dialog offers only the videos that need it. It indexes one video at a time and waits out the free tier's rate limits, so keep the tab open. A run that stops partway can be started again later.
+
 Without `openssl`, generate a secret with Node:
 
 ```bash

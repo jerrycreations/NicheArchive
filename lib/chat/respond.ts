@@ -1,25 +1,33 @@
 import "server-only";
 import {
+  APICallError,
+  createUIMessageStream,
   createUIMessageStreamResponse,
+  RetryError,
   streamText,
   toUIMessageStream,
   type LanguageModel,
 } from "ai";
 import { after } from "next/server";
 import { toModelMessages, trimHistory } from "@/lib/ai/context";
-import { aiErrorText, classifyAiError } from "@/lib/ai/errors";
+import { EmbeddingConfigError } from "@/lib/ai/embed";
+import { AiConfigError, aiErrorText, classifyAiError } from "@/lib/ai/errors";
 import { chatModel } from "@/lib/ai/models";
 import { generalSystemPrompt, videoSystemPrompt } from "@/lib/ai/prompts/chat";
 import { generateChatTitle } from "@/lib/ai/title";
 import { chatErrorResponse } from "@/lib/chat/errors";
-import { LIBRARY_CHAT_UNAVAILABLE } from "@/lib/chat/modes";
-import type { ChatMode } from "@/lib/chat/types";
+import { prepareLibraryAnswer } from "@/lib/chat/library";
+import { NO_MATCH_REPLY, sourcesPart } from "@/lib/chat/sources";
+import type { ChatMode, MessageRole } from "@/lib/chat/types";
 import { CHAT_HISTORY_LIMIT } from "@/lib/constants";
 import { getChat, setChatTitleIfEmpty, type NewChatValues } from "@/lib/db/queries/chats";
-import { listMessages, saveExchange } from "@/lib/db/queries/messages";
+import { listMessages, saveExchange, type ExchangeMessage } from "@/lib/db/queries/messages";
 import { getVideoById, getVideoByYoutubeId } from "@/lib/db/queries/videos";
-import type { ChatWithVideo, VideoRow } from "@/lib/db/types";
+import type { ChatWithVideo, MessageSources, VideoRow } from "@/lib/db/types";
 import type { ChatRequest } from "@/lib/validation/chat";
+
+/** Rewriting and searching get this long before a library question gives up. */
+const LIBRARY_SEARCH_TIMEOUT_MS = 20_000;
 
 /**
  * Answers one chat message as a streamed UI message response, or a JSON
@@ -31,9 +39,31 @@ export async function respondToChat(request: ChatRequest): Promise<Response> {
   const existing = await getChat(request.chatId);
   // A saved chat keeps the mode and video it started with.
   const mode: ChatMode = existing?.mode ?? request.mode;
+  const history = existing
+    ? trimHistory(await listMessages(existing.id), CHAT_HISTORY_LIMIT)
+    : [];
+  const question = { id: request.message.id, content: request.message.text };
 
-  const setup = await prepareMode(mode, existing, request.youtubeId);
+  const setup = await prepareMode(mode, existing, request.youtubeId, question.content, history);
   if (!setup.ok) return chatErrorResponse(setup.message, setup.status);
+
+  const chat: NewChatValues = { id: request.chatId, mode, videoId: setup.videoId };
+  const answerId = crypto.randomUUID();
+
+  // Started beside the answer rather than after it, so the chat list can
+  // show the title as soon as the reply ends. It never fails.
+  const title = existing?.title ? null : generateChatTitle(question.content);
+
+  const save = async (answer: ExchangeMessage) => {
+    await saveExchange(chat, question, answer);
+    if (title) await setChatTitleIfEmpty(chat.id, await title);
+  };
+
+  if (setup.answer.kind === "fixed") {
+    const { content, sources } = setup.answer;
+    return fixedReply({ id: answerId, content, sources }, save);
+  }
+  const { instructions, sources } = setup.answer;
 
   let model: LanguageModel;
   try {
@@ -44,21 +74,10 @@ export async function respondToChat(request: ChatRequest): Promise<Response> {
     return chatErrorResponse(aiErrorText(classifyAiError(error)), 503);
   }
 
-  const history = existing
-    ? trimHistory(await listMessages(existing.id), CHAT_HISTORY_LIMIT)
-    : [];
-  const chat: NewChatValues = { id: request.chatId, mode, videoId: setup.videoId };
-  const question = { id: request.message.id, content: request.message.text };
-  const answerId = crypto.randomUUID();
-
-  // Started beside the answer rather than after it, so the chat list can
-  // show the title as soon as the reply ends. It never fails.
-  const title = existing?.title ? null : generateChatTitle(question.content);
-
   let failed = false;
   const result = streamText({
     model,
-    instructions: setup.instructions,
+    instructions,
     messages: [...toModelMessages(history), { role: "user", content: question.content }],
     onError: ({ error }) => {
       failed = true;
@@ -76,8 +95,7 @@ export async function respondToChat(request: ChatRequest): Promise<Response> {
       }
       if (!text.trim()) return;
       try {
-        await saveExchange(chat, question, { id: answerId, content: text });
-        if (title) await setChatTitleIfEmpty(chat.id, await title);
+        await save({ id: answerId, content: text, sources });
       } catch (error) {
         console.error("Saving the chat failed:", error);
       }
@@ -91,32 +109,54 @@ export async function respondToChat(request: ChatRequest): Promise<Response> {
     await finished;
   });
 
+  const answer = toUIMessageStream({
+    stream: result.stream,
+    // The saved answer keeps the ID the browser was given.
+    generateMessageId: () => answerId,
+    // A library answer's start goes out with its sources, ahead of the text.
+    sendStart: !sources,
+    sendReasoning: false,
+    onError: (error) => aiErrorText(classifyAiError(error)),
+  });
+  if (!sources) return createUIMessageStreamResponse({ stream: answer });
+
   return createUIMessageStreamResponse({
-    stream: toUIMessageStream({
-      stream: result.stream,
-      // The saved answer keeps the ID the browser was given.
-      generateMessageId: () => answerId,
-      sendReasoning: false,
-      onError: (error) => aiErrorText(classifyAiError(error)),
+    stream: createUIMessageStream({
+      execute: ({ writer }) => {
+        writer.write({ type: "start", messageId: answerId });
+        writer.write(sourcesPart(sources));
+        writer.merge(answer);
+      },
     }),
   });
 }
 
+type ModeAnswer =
+  | {
+      kind: "model";
+      instructions: string;
+      /** A library answer's videos, streamed ahead of it and saved with it. */
+      sources?: MessageSources;
+    }
+  /** A reply given without asking Gemini: a library question that matched nothing. */
+  | { kind: "fixed"; content: string; sources: MessageSources };
+
 type ModeSetup =
-  | { ok: true; instructions: string; videoId: string | null }
+  | { ok: true; videoId: string | null; answer: ModeAnswer }
   | { ok: false; status: number; message: string };
 
 async function prepareMode(
   mode: ChatMode,
   existing: ChatWithVideo | null,
   youtubeId: string | undefined,
+  question: string,
+  history: readonly { role: MessageRole; content: string }[],
 ): Promise<ModeSetup> {
   switch (mode) {
     case "general":
-      return { ok: true, instructions: generalSystemPrompt(), videoId: null };
+      return { ok: true, videoId: null, answer: { kind: "model", instructions: generalSystemPrompt() } };
     case "library":
-      // Step 42 adds library search.
-      return { ok: false, status: 501, message: LIBRARY_CHAT_UNAVAILABLE };
+      return prepareLibrary(question, history);
     case "video": {
       const video = await loadChatVideo(existing, youtubeId);
       if (!video) {
@@ -128,16 +168,87 @@ async function prepareMode(
       return {
         ok: true,
         videoId: video.id,
-        instructions: videoSystemPrompt({
-          title: video.title,
-          channel: video.channel,
-          durationSeconds: video.durationSeconds,
-          segments: video.transcriptSegments,
-          timestampsEstimated: video.timestampsEstimated,
-        }),
+        answer: {
+          kind: "model",
+          instructions: videoSystemPrompt({
+            title: video.title,
+            channel: video.channel,
+            durationSeconds: video.durationSeconds,
+            segments: video.transcriptSegments,
+            timestampsEstimated: video.timestampsEstimated,
+          }),
+        },
       };
     }
   }
+}
+
+/**
+ * Searches the library for the question. With no good match the fixed reply
+ * goes back without asking Gemini, so it can't fill the gap from general
+ * knowledge.
+ */
+async function prepareLibrary(
+  question: string,
+  history: readonly { role: MessageRole; content: string }[],
+): Promise<ModeSetup> {
+  try {
+    const setup = await prepareLibraryAnswer(question, history, {
+      abortSignal: AbortSignal.timeout(LIBRARY_SEARCH_TIMEOUT_MS),
+    });
+    return {
+      ok: true,
+      videoId: null,
+      answer:
+        setup.kind === "no_match"
+          ? { kind: "fixed", content: NO_MATCH_REPLY, sources: setup.sources }
+          : { kind: "model", instructions: setup.instructions, sources: setup.sources },
+    };
+  } catch (error) {
+    console.error("Library search failed:", error);
+    if (error instanceof EmbeddingConfigError) return { ok: false, status: 503, message: error.message };
+    if (error instanceof Error && error.name === "TimeoutError") {
+      return { ok: false, status: 504, message: "Searching your videos took too long. Try again." };
+    }
+    // Anything but a Gemini error, such as the database, is the route's 500.
+    if (!(error instanceof AiConfigError || APICallError.isInstance(error) || RetryError.isInstance(error))) {
+      throw error;
+    }
+    const classified = classifyAiError(error);
+    const status =
+      classified.kind === "rate_limited"
+        ? 429
+        : classified.kind === "bad_key" || classified.kind === "model_not_found"
+          ? 503
+          : 502;
+    return { ok: false, status, message: aiErrorText(classified) };
+  }
+}
+
+/**
+ * Streams a reply that needs no model, and saves it with the question before
+ * the stream ends, as a model's answer is.
+ */
+function fixedReply(
+  answer: { id: string; content: string; sources: MessageSources },
+  save: (answer: ExchangeMessage) => Promise<void>,
+): Response {
+  const stream = createUIMessageStream({
+    execute: async ({ writer }) => {
+      writer.write({ type: "start", messageId: answer.id });
+      writer.write(sourcesPart(answer.sources));
+      writer.write({ type: "text-start", id: "reply" });
+      writer.write({ type: "text-delta", id: "reply", delta: answer.content });
+      writer.write({ type: "text-end", id: "reply" });
+      await save({ id: answer.id, content: answer.content, sources: answer.sources });
+      writer.write({ type: "finish", finishReason: "stop" });
+    },
+    onError: (error) => {
+      console.error("Saving the chat failed:", error);
+      return "Couldn't save this chat. Try again.";
+    },
+  });
+  return createUIMessageStreamResponse({ stream });
 }
 
 function loadChatVideo(

@@ -72,9 +72,10 @@ export function ChatPanel({
     },
   });
 
-  // Focus handed over from the new chat this page replaced.
+  // Focus handed over from the new chat this page replaced, or for a new
+  // chat, from "Continue with this video".
   useEffect(() => {
-    if (chatId && takeComposerFocus(chatId)) textareaRef.current?.focus();
+    if (takeComposerFocus(chatId)) textareaRef.current?.focus();
   }, [chatId]);
 
   // Once only, even though this runs after every render.

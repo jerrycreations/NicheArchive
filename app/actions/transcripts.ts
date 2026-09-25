@@ -1,9 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { actionError, unexpectedError, type ActionError } from "@/lib/actions/result";
 import { getVideoByYoutubeId, writeTranscript } from "@/lib/db/queries/videos";
 import { videoPath } from "@/lib/navigation";
+import { indexVideo } from "@/lib/search/index-video";
 import { parsePastedTranscript, TRANSCRIPT_TOO_LONG } from "@/lib/transcript/parse-pasted";
 import { segmentsToPlainText } from "@/lib/transcript/text";
 import {
@@ -19,7 +21,8 @@ export type SavePastedTranscriptResult =
 /**
  * Saves a transcript the user copied from elsewhere and pasted in, and marks
  * the video ready. It replaces whatever the video had and ends any processing
- * still running for it, whose own result is then dropped.
+ * still running for it, whose own result is then dropped. The library search
+ * index is rebuilt after the response.
  */
 export async function savePastedTranscript(
   input: PasteTranscriptInput,
@@ -43,12 +46,13 @@ export async function savePastedTranscript(
     if (!transcript.ok) return { kind: "invalid_transcript", message: transcript.message };
 
     // Written without a claim, so it lands even while a run is processing.
-    await writeTranscript(video.id, {
+    const saved = await writeTranscript(video.id, {
       segments: transcript.segments,
       text: segmentsToPlainText(transcript.segments),
       source: "pasted",
       timestampsEstimated: transcript.timestampsEstimated,
     });
+    if (saved) after(() => indexVideo(video.id));
   } catch (error) {
     return unexpectedError("savePastedTranscript", error, "Couldn't save the transcript. Try again.");
   }

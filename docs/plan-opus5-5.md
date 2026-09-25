@@ -965,7 +965,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 10: Indexing and library search (build order 4)
 
-- [ ] Step 36: Transcript chunking
+- [x] Step 36: Transcript chunking
   - **Task**: `chunkTranscript(segments)` groups consecutive segments into chunks of about `CHUNK_TARGET_SECONDS`.
     - After passing the target length, it breaks at the next sentence end or a pause of 1.5 seconds or more, and always by `CHUNK_MAX_SECONDS`.
     - A single cue longer than the maximum is split by words, with times interpolated.
@@ -978,8 +978,13 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/search/chunk.test.ts`: chunking cases
   - **Step Dependencies**: Step 4
   - **User Instructions**: None
+  - **Done with the pause and tail lengths kept in `chunk.ts`**:
+    - The 1.5-second pause and the 15-second shortest last chunk are constants in `chunk.ts`, not `lib/constants.ts`. `pausesBetween` in `lib/transcript/text.ts` takes an optional gap for it.
+    - Past the target, a chunk ends at a sentence end or pause; it never takes a cue that would carry it past 90 seconds.
+    - A chunk ends at the latest end among its cues, since overlapping auto-captions can end after the next one starts.
+    - A cue over 90 seconds is cut by words into `ceil(duration / 60)` pieces, each timed by where its words fall in the cue. A one-word cue stays whole, and cues with no words are dropped.
 
-- [ ] Step 37: Embedding service
+- [x] Step 37: Embedding service
   - **Task**: `embedDocuments(texts)` and `embedQuery(text)` call `embedMany` and `embed` with the configured embedding model.
     - Pass `outputDimensionality` from `EMBEDDING_DIMENSIONS`. Pass the document or query task type if the model supports task types; check the provider docs for `gemini-embedding-2`.
     - Scale every vector to unit length, because reduced-dimension output isn't normalized.
@@ -993,8 +998,21 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/search/embedding-input.ts`: chunk input text
   - **Step Dependencies**: Step 20
   - **User Instructions**: Check the embedding model's free-tier limits on AI Studio's rate-limit page. They are much lower than the chat model's, and Step 39 is designed around them.
+  - **Done with the task written into the text, and a retry loop of its own**:
+    - Google's embeddings guide (checked 2026-09-24) says `gemini-embedding-2` rejects `task_type`. It asks for the task in the text instead:
+      - queries as `task: search result | query: …`
+      - documents as `title: … | text: …`
+    - `embedDocuments` therefore takes `{ title, text }` pairs, and `buildChunkEmbeddingInput` returns one: the title is the video's title with its channel in parentheses.
+    - Models named `gemini-embedding-001`, `text-embedding-*` or `embedding-*` get `taskType` instead. Any other model gets the written form, which every model accepts.
+    - The guide says Gemini Embedding 2 normalizes reduced dimensions itself. Vectors are still scaled to unit length, in case the model setting changes.
+    - Batches of 100 go one at a time with the SDK's own retries off (`maxRetries: 0`). The retry loop:
+      - retries a 429 or a 5xx up to 3 times
+      - waits `retry-after`, Google's `RetryInfo` delay, or else 5, 15 and 30 seconds
+      - fails at once on a used-up daily quota, or when Google asks for more than 60 seconds, with that wait in the error for the caller
+    - `embedQuery` retries once, after at most 10 seconds, since someone is waiting on the answer. Both take an `abortSignal`.
+    - `embeddingModelId()` in `lib/ai/models.ts` gives the model name each video records.
 
-- [ ] Step 38: Indexing each video and hooking it into the pipeline
+- [x] Step 38: Indexing each video and hooking it into the pipeline
   - **Task**: `indexVideo(videoId)` loads a `ready` video, chunks it and embeds the chunks.
     - In one transaction, it deletes the video's old chunks, inserts the new ones and sets `indexed_at`, `indexed_model` and `index_error = null`.
     - On failure it writes `index_error` and leaves the transcript `status` as `ready`.
@@ -1011,8 +1029,26 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/video/transcript-panel.tsx`: show the notice
   - **Step Dependencies**: Steps 22, 24, 36, 37
   - **User Instructions**: None
+  - **Done with writes fenced by the transcript's md5, and time limits**:
+    - `indexVideo` records the md5 of the transcript text it chunked.
+      - `replaceVideoChunks` locks the video row (`for update`) and writes only while `md5(transcript_text)` still matches.
+      - An index built from a transcript that a paste replaced is dropped (`superseded`); the paste's own run indexes the new one. `markIndexFailed` is fenced the same way.
+    - `writeTranscript` now clears `indexed_at`, `indexed_model` and `index_error`, so a replaced transcript shows as needing indexing until `indexVideo` runs. The old chunks stay searchable until then.
+    - `indexVideo` never throws, so it's safe in `after()` work.
+      - It stops at 280 seconds by default.
+      - In the pipeline it gets whatever's left of 290 seconds, counted from the processing claim, because transcription may already have used most of the route's 300.
+      - A timeout, an embedding error or a database error is saved as `index_error` in words for the user.
+    - `POST /api/index/[youtubeId]` answers:
+      - `200` with the chunk count
+      - `404` for a video that's gone
+      - `409` when the transcript isn't ready or was replaced
+      - `429` with `Retry-After` and `retryAfterSeconds`
+      - `500` for anything else
+    - Response types are in `lib/search/index-types.ts`.
+    - The notice sits above the transcript: a bordered note with the saved reason and Retry, which calls the route and refreshes the page.
+    - The queries were checked against PGlite with pgvector and the real migrations: the fence, including an md5 of non-ASCII text matching Node's, the swap and the fenced failure.
 
-- [ ] Step 39: Re-index all
+- [x] Step 39: Re-index all
   - **Task**: `GET /api/index/pending?all=0|1` returns the IDs of `ready` videos to index. With `all=0`, that's videos where `indexed_model` differs from the current model, `indexed_at` is null or `index_error` is set. With `all=1`, it's every ready video.
     - A "Re-index all" dialog opens from a library page menu. It shows how many videos need indexing and has a "Rebuild everything" checkbox.
     - It calls `POST /api/index/[id]` for one video at a time and shows progress ("12 of 214") with a `Progress` bar.
@@ -1028,8 +1064,21 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/db/queries/videos.ts`: `listIndexCandidates`
   - **Step Dependencies**: Step 38
   - **User Instructions**: None
+  - **Done with both lists fetched as the dialog opens, and runs that stop early**:
+    - The dialog loads both lists at once, so the "Rebuild everything" checkbox switches between them instantly.
+    - `runReindex` (in `lib/search/reindex-client.ts`) handles 429s and failures:
+      - After a 429 it counts down `retryAfterSeconds`, or 60 seconds, and tries the same video again. After 5 waits for one video it counts that video as failed and moves on.
+      - A used-up daily quota, broken embedding settings, a bad key or a missing model stop the run with the reason, since every later video would fail the same way.
+      - Cancel stops at once, even mid-countdown.
+    - While a run is going:
+      - only Cancel closes the dialog
+      - the browser asks before the tab is closed or reloaded (`beforeunload`)
+      - the dialog refreshes the page when it's done
+    - The library menu shows only when the library has videos. `listIndexCandidates` also counts a null `indexed_model` as needing indexing.
+    - Added shadcn `Checkbox` and `Label`. They need no new packages.
+    - The loop is tested with an injected request and clock.
 
-- [ ] Step 40: Hybrid search and choosing videos
+- [x] Step 40: Hybrid search and choosing videos
   - **Task**: `hybridSearch(queryText)` embeds the query and runs `hybrid_search` through ``db.execute(sql`...`)``, passing the embedding as a `::vector` literal. It maps the rows to `ChunkMatch`.
     - `selectVideos(matches)` is pure:
       - It groups matches by video and scores each video as its best chunk score plus half the sum of its other chunk scores, with a cap.
@@ -1044,8 +1093,17 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/search/select-videos.test.ts`: fixture cases
   - **Step Dependencies**: Steps 9, 37
   - **User Instructions**: None
+  - **Done with any matched chunk counting, and the bonus capped at the best score**:
+    - A video counts when any of its matched chunks has a keyword hit or a similarity of at least `MIN_SEMANTIC_SIMILARITY`, not only its best-scoring chunk. A keyword hit means every word of the question appeared, which is strong evidence wherever it ranks.
+    - The other chunks add half their scores, capped at the best chunk's own score. So a long video with many loose matches can't outrank one strong match.
+    - `SelectedVideo.matches` keeps the 3 best chunks, in the order they come in the video.
+    - `hybridSearch` casts the embedding `::extensions.vector`, so it works whatever the search path. It passes `rrf_k => RRF_K` by name.
+    - First real numbers, from the development log:
+      - 0.795 for "What did the guy at the zoo say about the elephants?"
+      - 0.844 for the rewritten follow-up
+      - "What is the boiling point of mercury?" matched nothing, as it should
 
-- [ ] Step 41: Rewriting follow-up questions
+- [x] Step 41: Rewriting follow-up questions
   - **Task**: `rewriteQuery(question, history)`:
     - With no earlier messages, return the question unchanged **without** calling the model.
     - Otherwise, ask the rewrite model to turn the follow-up into a standalone question and return only that question.
@@ -1058,8 +1116,15 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/ai/rewrite.test.ts`: mock-model cases
   - **Step Dependencies**: Step 20
   - **User Instructions**: None
+  - **Done with a bounded prompt**:
+    - The rewrite sees the last 6 messages, each cut at 1,000 characters, in `<conversation>` tags, and the follow-up in `<follow_up>` tags.
+    - It's told never to answer or follow the question. It gets one try with a 10-second timeout.
+    - Quotes, Markdown and a "Question:" label are stripped from the reply.
+    - Live example:
+      - asked: "Where was he standing when he said that?"
+      - searched: "Where was the speaker at the zoo standing when he said that the cool thing about the elephants is that they have exceptionally long trunks?"
 
-- [ ] Step 42: "All my videos" chat mode
+- [x] Step 42: "All my videos" chat mode
   - **Task**: Add library mode to `respond.ts`. The steps are: load the history, rewrite the question, run `hybridSearch`, then `selectVideos`.
     - **No match**: don't call the model. Write the fixed reply "I couldn't find this in your videos." with `createUIMessageStream` and save it with `sources: { kind: "no_match", question }`.
     - **Match**:
@@ -1083,8 +1148,30 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/db/queries/messages.ts`: save sources
   - **Step Dependencies**: Steps 30, 40, 41
   - **User Instructions**: None
+  - **Done with the search before the model, and the citation parser left as it was**:
+    - `respondToChat` loads the history first, then asks `prepareLibraryAnswer` (in `lib/chat/library.ts`) for the setup. Setup:
+      - rewrite the follow-up
+      - search, with a 20-second limit
+      - select the videos
+      - load their transcripts, skipping any deleted since the search
+      - number the videos from 1 in search order
+    - With no match, the fixed reply streams from `createUIMessageStream` (start, `data-sources`, text, finish) without asking Gemini. It's saved, with its title, before the finish, as a model's answer is.
+    - With a match, the stream sends a start carrying the saved answer's ID and the `data-sources` part, then merges the `streamText` output with `sendStart: false`.
+    - If the search fails, the route answers:
+      - `429` for Gemini's rate limit
+      - `503` for broken embedding settings
+      - `504` for the 20-second limit
+      - `502` for other Gemini errors
+      - the route's `500` for the database
+    - `buildLibraryContext`:
+      - puts each video in a `<video number="n">` block with its title, channel, length and notes (excerpts, estimated timestamps)
+      - when over the budget, cuts the largest transcripts first to the lines within 3 minutes of their matches, joining the windows with `[…]`
+      - as a last resort, cuts the largest short at a line
+    - The citation parser already read `[n @ m:ss]` (Step 31), so `lib/chat/timestamps.ts` didn't change.
+    - `saveExchange` now names the columns it writes instead of spreading the message, and saves `sources` with the answer.
+    - Removed `LIBRARY_CHAT_UNAVAILABLE`. A new All my videos chat now only asks for a video when the library is empty.
 
-- [ ] Step 43: Sources display
+- [x] Step 43: Sources display
   - **Task**: Under library answers, show a "Found in" row of compact cards, built from the saved sources or the streamed `data-sources` part.
     - Each card has a thumbnail, title, channel, matched timestamps as chips linking to `/videos/<id>?t=<seconds>`, and a "Continue with this video" button that opens `/chats?mode=video&video=<id>` with the composer focused.
     - Numbered citations in the answer link to the same places.
@@ -1100,6 +1187,30 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/db/queries/videos.ts`: `existingYoutubeIds(ids)`
   - **Step Dependencies**: Steps 34, 42
   - **User Instructions**: None
+  - **Done with sources carried as a message part, and deleted videos passed down through context**:
+    - Sources travel as the `data-sources` part. `toUIMessages` rebuilds that part from saved sources, and `messageSources()` reads it back.
+    - Citations:
+      - `[n @ m:ss]` links to source n's video at that second
+      - a bare `[m:ss]` links to the only source when there's just one
+      - a citation of a deleted video stays text
+    - `/chats/[id]` looks up which cited videos still exist and passes the deleted ones to `DeletedVideosProvider` (`components/chat/deleted-videos.tsx`).
+    - The cards are 16rem wide, in a row that scrolls sideways. Each shows its number over the thumbnail.
+    - A matched answer that turns out to be the no-match sentence shows "Ask Gemini instead", with the question before it, in place of the "Found in" row.
+    - "Continue with this video" focuses the new chat's composer through `carryNewChatFocus()` in `lib/chat/composer-focus.ts`. `NewChat` already sent a pending first question (Step 34), so it didn't change.
+    - Two layout fixes, for `sr-only` labels (absolutely positioned) that escaped their scroll boxes:
+      - The message list is now `relative`. The bubbles' "You:" and "Gemini:" labels had been stretching the page once a chat was longer than the list.
+      - The "Found in" row is `relative` too, for the cards' labels.
+    - The notice's text is one string: split over lines around `&ldquo;`, it rendered with different spacing on the server and the client, which caused a hydration error.
+    - Section 10 was checked live in the dev server, with the chat model set to `gemini-3.5-flash-lite` in the server's own environment, because `gemini-3.8-flash` had used its 20 free requests for the day. `.env.local` was left alone. Checked:
+      - Re-index all indexing the 3 ready videos: 1, 3 and 3 chunks, under a second each
+      - an All my videos answer with a linked `[1 @ 0:01]` and its "Found in" card
+      - a rewritten follow-up
+      - a no-match reply, then "Ask Gemini instead", which sent the question in a new Gemini-only chat
+      - "Continue with this video", with the video chosen and the composer focused
+      - a planted answer citing a missing video, shown as "Video deleted" with its citation left as text
+      - a planted `index_error`, whose notice cleared after Retry re-indexed the video
+      - no sideways or page scroll at 416px
+    - The test chats and planted rows were deleted afterwards.
 
 ---
 

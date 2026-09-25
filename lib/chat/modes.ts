@@ -16,10 +16,3 @@ export const CHAT_MODE_PLACEHOLDERS: Record<ChatMode, string> = {
   library: "Ask about your videos",
   general: "Ask Gemini anything",
 };
-
-/**
- * Library chats need library search, which Step 42 adds. Until then the
- * route refuses them, and the new-chat form says so before anything is sent.
- */
-export const LIBRARY_CHAT_UNAVAILABLE =
-  "Asking across all your videos isn't ready yet. Choose One video or Gemini only.";

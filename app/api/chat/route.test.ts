@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiConfigError } from "@/lib/ai/errors";
 import { chatModel } from "@/lib/ai/models";
 import { generateChatTitle } from "@/lib/ai/title";
+import { prepareLibraryAnswer } from "@/lib/chat/library";
+import { NO_MATCH_REPLY } from "@/lib/chat/sources";
 import { getChat, setChatTitleIfEmpty } from "@/lib/db/queries/chats";
 import { listMessages, saveExchange } from "@/lib/db/queries/messages";
 import { getVideoById, getVideoByYoutubeId } from "@/lib/db/queries/videos";
@@ -17,6 +19,7 @@ vi.mock("next/server", async (importOriginal) => ({
 }));
 vi.mock("@/lib/ai/models", () => ({ chatModel: vi.fn() }));
 vi.mock("@/lib/ai/title", () => ({ generateChatTitle: vi.fn() }));
+vi.mock("@/lib/chat/library", () => ({ prepareLibraryAnswer: vi.fn() }));
 vi.mock("@/lib/db/queries/chats", () => ({ getChat: vi.fn(), setChatTitleIfEmpty: vi.fn() }));
 vi.mock("@/lib/db/queries/messages", () => ({ listMessages: vi.fn(), saveExchange: vi.fn() }));
 vi.mock("@/lib/db/queries/videos", () => ({
@@ -244,10 +247,126 @@ describe("POST /api/chat", () => {
     await expectError(await post(ask("Hi")), 404, "This video isn't in the library anymore.");
   });
 
-  it("answers 501 for library chats for now", async () => {
-    const response = await post(ask("Hi", { mode: "library", youtubeId: undefined }));
-    expect(response.status).toBe(501);
-    expect(saveExchange).not.toHaveBeenCalled();
+  describe("in a library chat", () => {
+    const askLibrary = (text: string) => ask(text, { mode: "library", youtubeId: undefined });
+    const videoSources = {
+      kind: "videos" as const,
+      videos: [
+        { index: 1, youtubeId: YOUTUBE_ID, title: "How Bread Rises", channel: "The Kitchen Lab", timestamps: [40] },
+      ],
+    };
+
+    it("replies that nothing matched without asking Gemini, and saves that", async () => {
+      const noMatch = { kind: "no_match" as const, question: "What is sourdough?" };
+      vi.mocked(prepareLibraryAnswer).mockResolvedValue({ kind: "no_match", sources: noMatch });
+
+      const response = await post(askLibrary("What is sourdough?"));
+      const body = await finish(response);
+
+      expect(response.status).toBe(200);
+      expect(chatModel).not.toHaveBeenCalled();
+      expect(body).toContain(`"type":"data-sources","data":${JSON.stringify(noMatch)}`);
+      expect(body).toContain(`"delta":${JSON.stringify(NO_MATCH_REPLY)}`);
+      expect(body).toContain('"finishReason":"stop"');
+      expect(saveExchange).toHaveBeenCalledExactlyOnceWith(
+        { id: CHAT_ID, mode: "library", videoId: null },
+        { id: MESSAGE_ID, content: "What is sourdough?" },
+        { id: expect.any(String), content: NO_MATCH_REPLY, sources: noMatch },
+      );
+      const answerId = vi.mocked(saveExchange).mock.calls[0][2].id;
+      expect(body).toContain(`"messageId":"${answerId}"`);
+      expect(setChatTitleIfEmpty).toHaveBeenCalledWith(CHAT_ID, "Why bread rises");
+    });
+
+    it("sends the sources ahead of Gemini's answer from the chosen videos, and saves them", async () => {
+      vi.mocked(prepareLibraryAnswer).mockResolvedValue({
+        kind: "videos",
+        instructions: "Answer only from <video number=\"1\">",
+        sources: videoSources,
+      });
+      const model = useModel(answering("Yeast eats sugar [1 @ 0:42]."));
+
+      const body = await finish(await post(askLibrary("Why does bread rise?")));
+
+      expect(model.doStreamCalls[0].prompt[0]).toEqual({
+        role: "system",
+        content: 'Answer only from <video number="1">',
+      });
+      const sourcesAt = body.indexOf('"type":"data-sources"');
+      expect(sourcesAt).toBeGreaterThan(body.indexOf('"type":"start"'));
+      expect(sourcesAt).toBeLessThan(body.indexOf('"type":"text-delta"'));
+      // One start, carrying the saved answer's ID.
+      expect(body.match(/"type":"start"/g)).toHaveLength(1);
+      expect(saveExchange).toHaveBeenCalledExactlyOnceWith(
+        { id: CHAT_ID, mode: "library", videoId: null },
+        { id: MESSAGE_ID, content: "Why does bread rise?" },
+        { id: expect.any(String), content: "Yeast eats sugar [1 @ 0:42].", sources: videoSources },
+      );
+      const answerId = vi.mocked(saveExchange).mock.calls[0][2].id;
+      expect(body).toContain(`"messageId":"${answerId}"`);
+    });
+
+    it("searches with the conversation so far", async () => {
+      vi.mocked(getChat).mockResolvedValue({
+        id: CHAT_ID,
+        mode: "library",
+        videoId: null,
+        title: "Bread",
+      } as ChatWithVideo);
+      const history = [
+        { role: "user", content: "Why does bread rise?" },
+        { role: "assistant", content: "Yeast [1 @ 0:42]." },
+      ] as MessageRow[];
+      vi.mocked(listMessages).mockResolvedValue(history);
+      vi.mocked(prepareLibraryAnswer).mockResolvedValue({
+        kind: "videos",
+        instructions: "Answer only from the videos.",
+        sources: videoSources,
+      });
+      useModel(answering("An hour [1 @ 1:10]."));
+
+      await finish(await post(askLibrary("How long does it take?")));
+
+      expect(prepareLibraryAnswer).toHaveBeenCalledWith("How long does it take?", history, {
+        abortSignal: expect.any(AbortSignal),
+      });
+    });
+
+    it("answers 429 when searching hits Gemini's rate limit, and saves nothing", async () => {
+      vi.mocked(prepareLibraryAnswer).mockRejectedValue(
+        new APICallError({
+          message: "You exceeded your current quota.",
+          url: "https://generativelanguage.googleapis.com",
+          requestBodyValues: {},
+          statusCode: 429,
+          isRetryable: true,
+        }),
+      );
+      await expectError(
+        await post(askLibrary("Why does bread rise?")),
+        429,
+        "Gemini's free limit was reached. Try again in a minute.",
+      );
+      expect(saveExchange).not.toHaveBeenCalled();
+    });
+
+    it("answers 500 when the search can't reach the database", async () => {
+      vi.mocked(prepareLibraryAnswer).mockRejectedValue(new Error("ECONNREFUSED"));
+      await expectError(
+        await post(askLibrary("Why does bread rise?")),
+        500,
+        "Something went wrong on the server. Try again.",
+      );
+    });
+
+    it("answers 504 when the search takes too long", async () => {
+      vi.mocked(prepareLibraryAnswer).mockRejectedValue(new DOMException("Timed out", "TimeoutError"));
+      await expectError(
+        await post(askLibrary("Why does bread rise?")),
+        504,
+        "Searching your videos took too long. Try again.",
+      );
+    });
   });
 
   it("answers 503 when the Gemini settings are missing", async () => {

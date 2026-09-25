@@ -1,12 +1,16 @@
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MAX_PASTED_TRANSCRIPT_CHARS } from "@/lib/constants";
 import { getVideoByYoutubeId, writeTranscript } from "@/lib/db/queries/videos";
 import type { VideoRow } from "@/lib/db/types";
+import { indexVideo } from "@/lib/search/index-video";
 import { NOT_A_TRANSCRIPT, TRANSCRIPT_TOO_LONG } from "@/lib/transcript/parse-pasted";
 import { savePastedTranscript } from "./transcripts";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("@/lib/search/index-video", () => ({ indexVideo: vi.fn() }));
 vi.mock("@/lib/db/queries/videos", () => ({
   getVideoByYoutubeId: vi.fn(),
   writeTranscript: vi.fn(),
@@ -45,6 +49,21 @@ describe("savePastedTranscript", () => {
     });
     expect(revalidatePath).toHaveBeenCalledWith("/library");
     expect(revalidatePath).toHaveBeenCalledWith(`/videos/${ID}`);
+  });
+
+  it("rebuilds the search index after the response", async () => {
+    await savePastedTranscript({ youtubeId: ID, text: TIMED });
+    expect(indexVideo).not.toHaveBeenCalled();
+
+    const [[work]] = vi.mocked(after).mock.calls;
+    await (work as () => Promise<unknown>)();
+    expect(indexVideo).toHaveBeenCalledExactlyOnceWith(VIDEO.id);
+  });
+
+  it("doesn't index a video deleted while the paste was saving", async () => {
+    vi.mocked(writeTranscript).mockResolvedValue(false);
+    await savePastedTranscript({ youtubeId: ID, text: TIMED });
+    expect(after).not.toHaveBeenCalled();
   });
 
   it("marks the times as estimated when the paste has none", async () => {

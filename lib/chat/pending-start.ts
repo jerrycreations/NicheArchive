@@ -1,5 +1,5 @@
 // Hands a first question to the Chats page, which sends it as it opens: for
-// example "Ask Gemini instead" after a library search finds nothing (Step 43).
+// example "Ask Gemini instead" after a library search finds nothing.
 // sessionStorage keeps it to this tab. It can be missing or throw, as in a
 // private window, and then the Chats page just opens empty.
 import { z } from "zod";

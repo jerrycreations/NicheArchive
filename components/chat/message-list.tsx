@@ -57,19 +57,32 @@ export function MessageList({
         followRef.current =
           element.scrollHeight - element.scrollTop - element.clientHeight < NEAR_BOTTOM_PX;
       }}
-      className={cn("min-h-0 overflow-y-auto overscroll-contain", className)}
+      // Relative, so the bubbles' absolutely placed screen-reader labels are
+      // clipped here instead of stretching the page.
+      className={cn("relative min-h-0 overflow-y-auto overscroll-contain", className)}
     >
       {/* A reading width, for wide chats on the Chats page. */}
       <div role="log" aria-busy={busy} className="mx-auto flex w-full max-w-3xl flex-col gap-5 p-4">
-        {messages.map((message) =>
+        {messages.map((message, index) =>
           message.role === "assistant" && !messageText(message) ? null : (
-            <MessageBubble key={message.id} message={message} citationHref={citationHref} />
+            <MessageBubble
+              key={message.id}
+              message={message}
+              question={message.role === "assistant" ? questionBefore(messages, index) : null}
+              citationHref={citationHref}
+            />
           ),
         )}
         {typing && <TypingIndicator />}
       </div>
     </div>
   );
+}
+
+/** The text of the question an answer replies to. */
+function questionBefore(messages: readonly UIMessage[], index: number): string | null {
+  const question = messages.slice(0, index).findLast((message) => message.role === "user");
+  return question ? messageText(question) : null;
 }
 
 function TypingIndicator() {

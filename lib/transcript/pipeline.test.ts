@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { transcribeWithGemini } from "@/lib/ai/transcribe";
 import { markTranscriptFailed, writeTranscript } from "@/lib/db/queries/videos";
+import { indexVideo } from "@/lib/search/index-video";
 import { fetchCaptions } from "@/lib/youtube/captions";
 import {
   GEMINI_PUBLIC_ONLY,
@@ -17,6 +18,7 @@ vi.mock("@/lib/db/queries/videos", () => ({
   writeTranscript: vi.fn(),
   markTranscriptFailed: vi.fn(),
 }));
+vi.mock("@/lib/search/index-video", () => ({ indexVideo: vi.fn() }));
 
 const VIDEO: PipelineVideo = {
   id: "7d3f7c52-5f1e-4a3b-9a57-2f1c7e4b8d10",
@@ -41,6 +43,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   vi.mocked(writeTranscript).mockResolvedValue(true);
   vi.mocked(markTranscriptFailed).mockResolvedValue(true);
+  vi.mocked(indexVideo).mockResolvedValue({ kind: "indexed", chunkCount: 1 });
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -158,6 +161,24 @@ describe("processVideoTranscript", () => {
     expect(markTranscriptFailed).not.toHaveBeenCalled();
   });
 
+  it("indexes the video once the transcript is saved, within the route's time", async () => {
+    vi.mocked(fetchCaptions).mockResolvedValue({ ok: true, source: "auto_captions", segments: speech });
+    // Claimed 60 seconds ago: about 230 of the 290 seconds are left.
+    const claimedAt = new Date(Date.now() - 60_000);
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+
+    await processVideoTranscript(VIDEO, claimedAt);
+
+    expect(indexVideo).toHaveBeenCalledExactlyOnceWith(VIDEO.id, {
+      abortSignal: expect.any(AbortSignal),
+    });
+    expect(vi.mocked(writeTranscript).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(indexVideo).mock.invocationCallOrder[0],
+    );
+    expect(timeout.mock.calls[0][0]).toBeGreaterThan(229_000);
+    expect(timeout.mock.calls[0][0]).toBeLessThanOrEqual(230_000);
+  });
+
   it("marks the video failed with one line per source", async () => {
     vi.mocked(fetchCaptions).mockResolvedValue(noCaptions);
     await processVideoTranscript({ ...VIDEO, privacyStatus: "private" }, CLAIMED_AT);
@@ -167,6 +188,7 @@ describe("processVideoTranscript", () => {
       `Captions: This video has no captions.\nGemini: ${GEMINI_PUBLIC_ONLY}`,
     );
     expect(writeTranscript).not.toHaveBeenCalled();
+    expect(indexVideo).not.toHaveBeenCalled();
   });
 
   it("logs and moves on when a paste or a newer run took the video over", async () => {
@@ -174,6 +196,7 @@ describe("processVideoTranscript", () => {
     vi.mocked(writeTranscript).mockResolvedValue(false);
     await expect(processVideoTranscript(VIDEO, CLAIMED_AT)).resolves.toBeUndefined();
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining("took over"));
+    expect(indexVideo).not.toHaveBeenCalled();
   });
 
   it("marks the video failed when something throws", async () => {

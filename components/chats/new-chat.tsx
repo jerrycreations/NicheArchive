@@ -7,11 +7,7 @@ import { StarterPrompts } from "@/components/chat/starter-prompts";
 import { ChatModeLine } from "@/components/chats/chat-header";
 import { ModeSelector } from "@/components/chats/mode-selector";
 import { VideoPicker } from "@/components/chats/video-picker";
-import {
-  CHAT_MODE_LABELS,
-  CHAT_MODE_PLACEHOLDERS,
-  LIBRARY_CHAT_UNAVAILABLE,
-} from "@/lib/chat/modes";
+import { CHAT_MODE_LABELS, CHAT_MODE_PLACEHOLDERS } from "@/lib/chat/modes";
 import { carryComposerFocus } from "@/lib/chat/composer-focus";
 import { takePendingStart } from "@/lib/chat/pending-start";
 import type { ChatMode } from "@/lib/chat/types";
@@ -45,8 +41,8 @@ export function NewChat({
   const [youtubeId, setYoutubeId] = useState(initialYoutubeId);
   const [startWith, setStartWith] = useState<string>();
 
-  // A first question another page left to send here (Step 43). Read after
-  // hydration, since the server can't see sessionStorage.
+  // A first question another page left to send here, such as "Ask Gemini
+  // instead". Read after hydration, since the server can't see sessionStorage.
   useEffect(() => {
     const pending = takePendingStart();
     if (!pending) return;
@@ -116,9 +112,9 @@ function blockedReason(
   video: VideoOption | undefined,
   videoCount: number,
 ): string | null {
-  if (mode === "library") return LIBRARY_CHAT_UNAVAILABLE;
-  if (mode !== "video") return null;
+  if (mode === "general") return null;
   if (videoCount === 0) return "Add a video to the library first.";
+  if (mode === "library") return null;
   if (!video) return "Choose a video to ask about.";
   if (video.status !== "ready") return "That video's transcript isn't ready yet.";
   return null;
