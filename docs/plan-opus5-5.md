@@ -650,7 +650,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 8: Video page
 
-- [ ] Step 25: Embedded player and seeking
+- [x] Step 25: Embedded player and seeking
   - **Task**: Load the YouTube IFrame Player API once per page, as a shared promise.
     - `YouTubePlayer` creates the player (host `https://www.youtube-nocookie.com`), accepts a `startSeconds` value and exposes `seekTo(seconds)`, which seeks and plays.
     - `PlayerProvider` puts `seekTo` and a ready flag in context. `usePlayer()` returns a harmless no-op outside the provider.
@@ -664,8 +664,25 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/player/use-player.ts`: hook with a no-op default
   - **Step Dependencies**: Step 13
   - **User Instructions**: None
+  - **Done with an `available` flag, a re-keyed fallback and more error codes**:
+    - `usePlayer()` returns `{ available, ready, seekTo }`. `available` says whether a player is on the page, which Step 31's `TimestampLink` needs; `ready` can't tell it, because it's false while the player loads.
+    - The context lives in `lib/player/use-player.ts`, so `lib` doesn't import from `components`. `YouTubePlayer` registers a seek handle with the provider through `usePlayerRegistration()`. It throws outside a `PlayerProvider`.
+    - The types for `YT` are hand-written in `load-iframe-api.ts`; there's no `@types/youtube`.
+    - The API replaces a `div` the player creates inside an empty host, so React never manages that node.
+    - A seek made before the player is ready is queued and played in `onReady`.
+    - In fallback mode, a seek re-mounts the iframe with a new `key` and `start` plus `autoplay`. Changing the `src` instead would add a browser history entry for every seek.
+    - A script that fails to load falls back at once, without waiting the 10 seconds.
+    - While loading, the player shows the video's thumbnail.
+    - A new `?t=` on the same page seeks the mounted player.
+    - Errors 101 and 150 read "This video can't be played here", 100 reads "isn't available on YouTube anymore", and anything else reads "The player couldn't load this video". Each has an "Open on YouTube" link.
+    - Embedded players report a video ID that doesn't exist as 101 or 150, not 100.
+    - Checked live in a production build:
+      - seeking and playing through `YT.get(...).getCurrentTime()`
+      - `?t=60` cueing without autoplay
+      - the fallback, by temporarily pointing the script at a 404
+      - the error overlay, by temporarily using a missing ID
 
-- [ ] Step 26: Transcript viewer
+- [x] Step 26: Transcript viewer
   - **Task**: Render the transcript as a scrollable list.
     - `groupDisplayLines(segments)` is pure and merges short cues into lines of about 10 to 20 seconds so the list is easier to read. Test it.
     - Each line starts with a timestamp button that calls `seekTo`. Estimated timestamps show a leading `~` and a note: "Timestamps are approximate because the pasted text had none."
@@ -681,8 +698,15 @@ The spec leaves these open. Change any of them here before generating code.
     - `lib/transcript/display-lines.test.ts`: grouping cases
   - **Step Dependencies**: Steps 19, 25
   - **User Instructions**: None
+  - **Done with sentence and pause breaks**:
+    - A line ends at a sentence end or a 2-second pause once it's `DISPLAY_LINE_MIN_SECONDS` (10) long, and at the next cue once it's `DISPLAY_LINE_MAX_SECONDS` (20) long. A single longer cue stays whole.
+    - Pauses are measured by `pausesBetween`, now exported from `lib/transcript/text.ts` and shared with the paragraph rule.
+    - The list is a CSS grid, and each line is a subgrid of it, so the text lines up after the widest timestamp.
+    - The timestamp buttons are labeled "Play from 0:42", or "Play from about 0:42" when the time is estimated.
+    - The list flows with the page instead of scrolling in its own box, because the player is pinned (Step 27).
+    - The processing state keeps the viewer's heading and puts the spinner where the source label goes. It exports `TranscriptSkeleton` for the page's `loading.tsx`.
 
-- [ ] Step 27: Video page layout
+- [x] Step 27: Video page layout
   - **Task**: `app/(app)/videos/[youtubeId]/page.tsx` loads the video and calls `notFound()` if it's missing. It reads `?t=` as the player's start time.
     - Header: title, channel, publish date, duration, an "Open on YouTube" link and the actions menu from Step 18.
     - Desktop (`lg` and up): a two-column grid. The left column holds the player and the transcript panel; the right column (about 400px) holds the chat. The chat is a placeholder until Step 32.
@@ -699,6 +723,29 @@ The spec leaves these open. Change any of them here before generating code.
     - `components/video/transcript-panel.tsx`: switches between the three states
   - **Step Dependencies**: Steps 18, 23, 24, 26
   - **User Instructions**: None
+  - **Done with a pinned player, one tree for all sizes, and `getVideoDetail`**:
+    - At the user's choice, the player is pinned under the top bar (`sticky top-14`) while the transcript scrolls under it, on phones and desktops.
+      - Its width is capped at `calc(55dvh*16/9)`, so it never takes more than about 55% of the screen's height.
+      - The desktop chat column is pinned beside it, level with the player at rest and when scrolled.
+    - `VideoPageLayout` renders one tree for every size:
+      - The Radix `Tabs` root is the grid. The player, the tab list (`lg:hidden`) and both panels are its items, placed explicitly from `lg`.
+      - Because the grid is the sticky containing block, the player also stays pinned on the phone's Chat tab.
+      - Both panels use `forceMount` and hide only below `lg` when inactive. Step 32's chat therefore stays mounted when someone switches tabs, and desktop shows both panels.
+      - `grid-rows-[auto_1fr]` keeps a tall chat from adding space under the player.
+      - The panels drop Radix's `tabIndex={0}`, because they hold their own controls.
+    - `getVideoDetail` reuses `getVideoByYoutubeId` and `countChatsForVideo`, and applies `effectiveStatus` in the query function, as `listVideos` does.
+    - `parseStartParam` in `lib/navigation.ts` reads `?t=` as `95`, `95s`, `1m30` or `1h2m3s`. Anything else, or a time past the end, starts from 0.
+    - The page shares one React-`cache`d load between `generateMetadata` (which sets the video title as the page title) and the page. IDs that aren't video IDs go straight to not-found. `PlayerProvider` is keyed by the video.
+    - Under `loading.tsx` a streamed `notFound()` answers with status 200 (Next docs). That's fine for a `noindex` site.
+    - Checked live in a production build:
+      - a captioned video going from "Getting the transcript…" to the viewer
+      - a failed video's reasons and paste form, then timed and untimed pastes (`~` timestamps and the note)
+      - the Copy toast
+      - the tabs at 535px and 320px, with no sideways scroll
+      - the pinned player on both tabs
+      - the desktop columns at 1440×900
+      - both not-found URLs
+      - deleting from the video page, which went to `/library` without the not-found text ever appearing (Step 18's re-check)
 
 ---
 

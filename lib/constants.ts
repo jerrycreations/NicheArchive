@@ -21,6 +21,15 @@ export const PARAGRAPH_GAP_SECONDS = 2;
  */
 export const PARAGRAPH_MAX_SECONDS = 60;
 
+/**
+ * The transcript viewer merges caption cues into lines of about 10 to 20
+ * seconds. A line ends at a sentence end or a pause once it's this long…
+ */
+export const DISPLAY_LINE_MIN_SECONDS = 10;
+
+/** …and anywhere once it's this long, since auto-captions have no punctuation. */
+export const DISPLAY_LINE_MAX_SECONDS = 20;
+
 /** Chunks returned by hybrid search before they're grouped by video. */
 export const SEARCH_MATCH_COUNT = 30;
 

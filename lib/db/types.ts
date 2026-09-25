@@ -29,6 +29,12 @@ export type VideoListItem = Pick<
   | "processingStartedAt"
 > & { chatCount: number };
 
+/**
+ * A video as its own page shows it. `status` and `errorMessage` are the
+ * effective ones, as in VideoListItem. `chatCount` is for the delete dialog.
+ */
+export type VideoDetail = VideoRow & { chatCount: number };
+
 export type TranscriptChunkRow = Omit<
   typeof transcriptChunks.$inferSelect,
   "searchVector"

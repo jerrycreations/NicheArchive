@@ -73,12 +73,21 @@ function startsParagraph(
   next: TranscriptSegment,
   paragraphStart: number,
 ): boolean {
-  const previousEnd = previous.start + Math.max(previous.duration, 0);
-  if (next.start - previousEnd >= PARAGRAPH_GAP_SECONDS - EPSILON) return true;
+  if (pausesBetween(previous, next)) return true;
 
   const running = next.start - paragraphStart;
   if (running >= PARAGRAPH_MAX_SECONDS && endsSentence(previous.text)) return true;
   return running >= 2 * PARAGRAPH_MAX_SECONDS;
+}
+
+/**
+ * Whether the speaker pauses for PARAGRAPH_GAP_SECONDS between two cues:
+ * from the end of one to the start of the next, or between their start times
+ * when the first has no duration.
+ */
+export function pausesBetween(previous: TranscriptSegment, next: TranscriptSegment): boolean {
+  const previousEnd = previous.start + Math.max(previous.duration, 0);
+  return next.start - previousEnd >= PARAGRAPH_GAP_SECONDS - EPSILON;
 }
 
 /** Whether `text` ends a sentence, with `.`, `!`, `?` or `…` before any closing quotes or brackets. */

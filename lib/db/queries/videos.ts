@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, inArray, isNull, lt, or } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { chats, videos } from "@/lib/db/schema";
-import type { NewVideo, VideoListItem, VideoRow } from "@/lib/db/types";
+import type { NewVideo, VideoDetail, VideoListItem, VideoRow } from "@/lib/db/types";
 import {
   effectiveStatus,
   staleCutoff,
@@ -28,6 +28,17 @@ export async function getVideoById(id: string): Promise<VideoRow | null> {
     where: eq(videos.id, id),
   });
   return video ?? null;
+}
+
+/**
+ * A video for its own page, with its effective transcript status (stalled
+ * processing reads as failed) and how many chats are about it.
+ */
+export async function getVideoDetail(youtubeId: string): Promise<VideoDetail | null> {
+  const video = await getVideoByYoutubeId(youtubeId);
+  if (!video) return null;
+  const chatCount = await countChatsForVideo(video.id);
+  return { ...video, ...effectiveStatus(video, new Date()), chatCount };
 }
 
 /**
