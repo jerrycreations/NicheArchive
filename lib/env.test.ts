@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const VALID = {
   DATABASE_URL:
     "postgresql://postgres.abc:p%40ss@aws-0-us-east-1.pooler.supabase.com:6543/postgres",
+  APP_PASSCODES: "Alex:correct horse battery staple, Sam : purple monkey dishwasher ",
+  AUTH_SECRET: "s".repeat(32),
   YOUTUBE_API_KEY: "yt-key",
   GOOGLE_GENERATIVE_AI_API_KEY: "gemini-key",
   GEMINI_CHAT_MODEL: "gemini-3.8-flash",
@@ -44,6 +46,48 @@ describe("env", () => {
       YOUTUBE_API_KEY: VALID.YOUTUBE_API_KEY,
       EMBEDDING_DIMENSIONS: 768,
     });
+  });
+
+  it("reads APP_PASSCODES as trimmed names and codes", async () => {
+    stubEnv();
+    const env = await loadEnv();
+    expect(env().APP_PASSCODES).toEqual([
+      { name: "Alex", code: "correct horse battery staple" },
+      { name: "Sam", code: "purple monkey dishwasher" },
+    ]);
+  });
+
+  it("keeps everything after a name's colon as the code", async () => {
+    stubEnv({ APP_PASSCODES: "Alex:with:colons:inside" });
+    const env = await loadEnv();
+    expect(env().APP_PASSCODES).toEqual([{ name: "Alex", code: "with:colons:inside" }]);
+  });
+
+  it.each([
+    ["an entry without a colon", "Alex:correct horse battery staple,Sam", "must be Name:code pairs separated by commas"],
+    ["a blank name", ":correct horse battery staple", "must be Name:code pairs separated by commas"],
+    ["a trailing comma", "Alex:correct horse battery staple,", "must be Name:code pairs separated by commas"],
+    ["a short code", "Alex:correct horse battery staple,Sam:1234567", "needs a code of at least 8 characters for Sam"],
+    ["a name twice", "Alex:correct horse battery staple,alex:purple monkey dishwasher", "lists alex twice"],
+    ["two people with one code", "Alex:correct horse battery staple,Sam:correct horse battery staple", "gives two people the same code"],
+  ])("rejects APP_PASSCODES with %s, without showing a code", async (_, value, message) => {
+    stubEnv({ APP_PASSCODES: value });
+    const env = await loadEnv();
+    let error = "";
+    try {
+      env();
+    } catch (thrown) {
+      error = (thrown as Error).message;
+    }
+    expect(error).toContain(`APP_PASSCODES ${message}`);
+    expect(error).not.toContain("correct horse");
+    expect(error).not.toContain("1234567");
+  });
+
+  it("wants AUTH_SECRET to be at least 32 characters", async () => {
+    stubEnv({ AUTH_SECRET: "s".repeat(31) });
+    const env = await loadEnv();
+    expect(env).toThrow(/AUTH_SECRET must be at least 32 characters/);
   });
 
   it("names every missing or invalid key in one error", async () => {

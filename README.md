@@ -1,6 +1,6 @@
 # NicheArchive
 
-A web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. It runs entirely on free tierss.
+A private web app for two people to archive YouTube videos with their English transcripts and ask Gemini about them. You can ask about one video, across the whole archive, or ask plain Gemini. Each person signs in with their own code and has their own chats, and it runs entirely on free tiers.
 
 - Spec: [docs/spec-opus5-5.md](docs/spec-opus5-5.md)
 - Build plan: [docs/plan-opus5-5.md](docs/plan-opus5-5.md)
@@ -67,6 +67,8 @@ Set these in `.env.local` for development and in **Vercel → Project → Settin
 | --- | --- | --- |
 | `DATABASE_URL` | The app's database connection | Supabase → **Connect** → **Transaction pooler** (port 6543) |
 | `DATABASE_MIGRATION_URL` | `drizzle-kit` migrations only; not needed on Vercel | Supabase → **Connect** → **Session pooler** (port 5432), plus `?sslmode=require` |
+| `APP_PASSCODES` | Who can sign in, as `Name:code` pairs separated by commas | You choose them. The code alone signs you in, so make each one long; codes need at least 8 characters. Changing someone's code signs out only their devices. |
+| `AUTH_SECRET` | Signs the session cookie (at least 32 characters) | `openssl rand -base64 32` |
 | `YOUTUBE_API_KEY` | Video metadata (YouTube Data API v3) | Google Cloud Console → enable **YouTube Data API v3** → **Credentials** → API key |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Gemini chat, transcription and embeddings | Google AI Studio → **Get API key** |
 | `GEMINI_CHAT_MODEL` | Chat answers and video transcription | Default `gemini-3.8-flash` |
@@ -87,9 +89,13 @@ Supabase's **Direct connection** string (`db.<ref>.supabase.co`) is IPv6-only, a
 
 ## Access
 
-There's no sign-in. Anyone who has the site's URL can use it: read, add and delete videos and chats, and ask questions that spend the free Gemini and YouTube quotas. The site is only unlisted: `robots.txt` and `noindex` tags keep search engines away, so share the URL only with people you trust.
+Each person has their own code in `APP_PASSCODES`; there's no registering or username. `proxy.ts` sends any device without a valid `na_session` cookie to `/unlock`, and API requests without one get `401` JSON. Only `/unlock` and `/api/cron/*` are open; the cron route checks `CRON_SECRET` itself. The cookie names who signed in, is signed with `AUTH_SECRET` and lasts 30 days. It stops working when that person's code changes, when they're removed from `APP_PASSCODES`, or when `AUTH_SECRET` changes. **Sign out** is in the menu behind the person icon in the top bar, or in the ☰ menu on phones.
 
-The API keys and database credentials still stay on the server. The daily keep-alive route is the one route that checks a secret: Vercel Cron sends `CRON_SECRET` with each call.
+Each IP address gets 5 tries at a code. A wrong fifth try locks that address out for an hour, and a right code clears its count. The tries live in the `unlock_attempts` table, keyed by an HMAC of the address rather than the address itself, and the daily cron deletes rows over a day old.
+
+Videos, search and export are shared. Chats belong to whoever started them: the chat list, a video's chats and a chat's own page show only your own, and opening someone else's chat link shows "Chat not found". Chats are saved under the name, so renaming someone in `APP_PASSCODES` leaves their old chats under the old name.
+
+The proxy isn't the only check. Every server action calls `getSession()`, every route handler except the cron is wrapped in `withSession()`, and pages that read chats call `pageSession()`. All three live in [lib/auth/require-session.ts](lib/auth/require-session.ts). A server action is posted to whichever page uses it, so a matcher change could leave it outside the proxy. `robots.txt` and `noindex` tags also keep search engines away.
 
 ## Database migrations
 
@@ -138,7 +144,7 @@ What [vercel.json](vercel.json) sets up:
 
 Time limits live in the route files as `maxDuration`, which is how Next.js sets them: 300 seconds, the Hobby maximum, for getting transcripts and building the search index, and 60 seconds for chat. Anything slower is cut off and shows as failed with a Retry button.
 
-Preview deployments sit behind Vercel's Deployment Protection, so only you can open them. Production is open to anyone with the URL (see [Access](#access)).
+Preview deployments sit behind Vercel's Deployment Protection, so only you can open them. Production needs a code (see [Access](#access)).
 
 ## Library search index and re-indexing
 

@@ -1,14 +1,19 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { verifySessionToken } from "@/lib/auth/session";
 import { MAX_PASTED_TRANSCRIPT_CHARS } from "@/lib/constants";
 import { getVideoByYoutubeId, writeTranscript } from "@/lib/db/queries/videos";
 import type { VideoRow } from "@/lib/db/types";
+import { SIGNED_OUT } from "@/lib/errors";
 import { indexVideo } from "@/lib/search/index-video";
 import { NOT_A_TRANSCRIPT, TRANSCRIPT_TOO_LONG } from "@/lib/transcript/parse-pasted";
 import { savePastedTranscript } from "./transcripts";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Every request carries a cookie; verifySessionToken decides who, if anyone, it's for.
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "token" }) }) }));
+vi.mock("@/lib/auth/session", () => ({ SESSION_COOKIE: "na_session", verifySessionToken: vi.fn() }));
 vi.mock("next/server", () => ({ after: vi.fn() }));
 vi.mock("@/lib/search/index-video", () => ({ indexVideo: vi.fn() }));
 vi.mock("@/lib/db/queries/videos", () => ({
@@ -24,6 +29,7 @@ const TIMED = `0:00 ${SENTENCE}\n0:05 ${SENTENCE}\n0:10 ${SENTENCE}`;
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(verifySessionToken).mockResolvedValue({ person: "Alex" });
   vi.mocked(getVideoByYoutubeId).mockResolvedValue(VIDEO);
   vi.mocked(writeTranscript).mockResolvedValue(true);
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -34,6 +40,16 @@ afterEach(() => {
 });
 
 describe("savePastedTranscript", () => {
+  it("refuses a signed-out device without touching the database", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    expect(await savePastedTranscript({ youtubeId: ID, text: TIMED })).toEqual({
+      kind: "error",
+      message: SIGNED_OUT,
+    });
+    expect(getVideoByYoutubeId).not.toHaveBeenCalled();
+    expect(writeTranscript).not.toHaveBeenCalled();
+  });
+
   it("saves a timed paste as ready, without a claim, and refreshes the pages", async () => {
     expect(await savePastedTranscript({ youtubeId: ID, text: TIMED })).toEqual({ kind: "saved" });
 

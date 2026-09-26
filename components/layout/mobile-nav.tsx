@@ -3,17 +3,22 @@
 import { CheckIcon, MenuIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AccountMenuItems } from "@/components/layout/account-menu";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { isActivePath, NAV_ITEMS } from "@/lib/navigation";
 
-/** Below `md`, the Library and Chats links move into this small menu. */
-export function MobileNav() {
+/**
+ * Below `md`, the Library and Chats links move into this small menu, with
+ * who is signed in and Sign out under them.
+ */
+export function MobileNav({ person }: { person?: string }) {
   const pathname = usePathname();
 
   return (
@@ -24,7 +29,7 @@ export function MobileNav() {
           <span className="sr-only">Open menu</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-40">
+      <DropdownMenuContent align="start" className="w-48">
         {NAV_ITEMS.map(({ href, label }) => {
           const active = isActivePath(pathname, href);
           return (
@@ -36,6 +41,12 @@ export function MobileNav() {
             </DropdownMenuItem>
           );
         })}
+        {person && (
+          <>
+            <DropdownMenuSeparator />
+            <AccountMenuItems person={person} />
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

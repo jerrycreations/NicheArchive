@@ -30,13 +30,18 @@ import type { ChatRequest } from "@/lib/validation/chat";
 const LIBRARY_SEARCH_TIMEOUT_MS = 20_000;
 
 /**
- * Answers one chat message as a streamed UI message response, or a JSON
- * error the chat shows as it is. The question and answer are saved together
- * once the answer is complete, even if the browser has gone by then. Nothing
- * is saved when the answer fails, so the question can simply be sent again.
+ * Answers one chat message from `owner` as a streamed UI message response,
+ * or a JSON error the chat shows as it is. The question and answer are saved
+ * together once the answer is complete, even if the browser has gone by then.
+ * Nothing is saved when the answer fails, so the question can simply be sent
+ * again.
  */
-export async function respondToChat(request: ChatRequest): Promise<Response> {
+export async function respondToChat(request: ChatRequest, owner: string): Promise<Response> {
   const existing = await getChat(request.chatId);
+  // Someone else's chat is as good as missing, but its ID can't start a new one.
+  if (existing && existing.owner !== owner) {
+    return chatErrorResponse("This chat doesn't exist.", 404);
+  }
   // A saved chat keeps the mode and video it started with.
   const mode: ChatMode = existing?.mode ?? request.mode;
   const history = existing
@@ -47,7 +52,7 @@ export async function respondToChat(request: ChatRequest): Promise<Response> {
   const setup = await prepareMode(mode, existing, request.youtubeId, question.content, history);
   if (!setup.ok) return chatErrorResponse(setup.message, setup.status);
 
-  const chat: NewChatValues = { id: request.chatId, mode, videoId: setup.videoId };
+  const chat: NewChatValues = { id: request.chatId, mode, videoId: setup.videoId, owner };
   const answerId = crypto.randomUUID();
 
   // Started beside the answer rather than after it, so the chat list can

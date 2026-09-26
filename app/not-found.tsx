@@ -3,6 +3,7 @@ import Link from "next/link";
 import { AddVideoDialogProvider } from "@/components/layout/add-video-dialog";
 import { TopBar } from "@/components/layout/top-bar";
 import { Button } from "@/components/ui/button";
+import { getSession } from "@/lib/auth/require-session";
 
 export const metadata: Metadata = {
   title: "Page not found",
@@ -12,10 +13,12 @@ export const metadata: Metadata = {
  * Any address the app doesn't have. It sits outside the app's route group,
  * so it brings the top bar itself and looks like every other page.
  */
-export default function NotFound() {
+export default async function NotFound() {
+  // The proxy only lets signed-in devices this far, apart from /unlock itself.
+  const session = await getSession();
   return (
     <AddVideoDialogProvider>
-      <TopBar />
+      <TopBar person={session?.person} />
       <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col items-start gap-4">
           <div className="flex flex-col gap-1">

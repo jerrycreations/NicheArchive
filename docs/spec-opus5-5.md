@@ -6,7 +6,7 @@ A web app for two people to archive YouTube videos and their transcripts and ask
 
 ## Target Audience
 
-- The owner and one friend, who share the site's unlisted URL
+- The owner and one friend, each with their own code
 - Not advertised; no plans to show it to others yet
 - Expected to grow to hundreds of mostly short videos
 
@@ -49,7 +49,7 @@ A web app for two people to archive YouTube videos and their transcripts and ask
 - [ ] Stream responses
 - [ ] Timestamps in answers are links that jump to that moment in the video
 - [ ] Starter prompts in video chats: Summarize, Key takeaways, Outline
-- [ ] Chats are saved and shared between both users
+- [ ] Chats are saved, and each person sees only their own (changed 2026-09-25; before that, both users shared every chat)
   - [ ] The Chats page lists all chats, newest first, showing the mode and, for video chats, the video's thumbnail and title
   - [ ] A chat's title is generated from its first question and can be renamed
   - [ ] Reopen and continue any chat; delete a chat
@@ -83,8 +83,11 @@ A web app for two people to archive YouTube videos and their transcripts and ask
 
 ### Access
 
-- [ ] No user accounts
-- [ ] No passcode either (dropped on 2026-09-24, because unlocking got in the way during development): the site is unlisted, search engines are asked not to index it, and anyone with the URL can use it
+- [ ] No user accounts and no registering
+- [ ] Each person has their own code, set in the server's environment (`APP_PASSCODES`). The code alone signs them in and says who they are; there's no username. (Added 2026-09-25. The shared passcode was dropped on 2026-09-24, then brought back per person so strangers can't use the site and chats can belong to someone.)
+- [ ] A device stays signed in for 30 days, and can sign out from the top bar
+- [ ] Each IP address gets 5 tries at a code, then is locked out for an hour
+- [ ] Search engines are asked not to index the site
 - [ ] Gemini key, YouTube key and database credentials stay on the server only
 
 ### Later (not in v1)

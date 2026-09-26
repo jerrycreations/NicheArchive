@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { after } from "next/server";
 import { actionError, unexpectedError, type ActionError } from "@/lib/actions/result";
+import { getSession } from "@/lib/auth/require-session";
 import { getVideoByYoutubeId, writeTranscript } from "@/lib/db/queries/videos";
+import { SIGNED_OUT } from "@/lib/errors";
 import { videoPath } from "@/lib/navigation";
 import { indexVideo } from "@/lib/search/index-video";
 import { parsePastedTranscript, TRANSCRIPT_TOO_LONG } from "@/lib/transcript/parse-pasted";
@@ -27,6 +29,7 @@ export type SavePastedTranscriptResult =
 export async function savePastedTranscript(
   input: PasteTranscriptInput,
 ): Promise<SavePastedTranscriptResult> {
+  if (!(await getSession())) return actionError(SIGNED_OUT);
   const parsed = pasteTranscriptInputSchema.safeParse(input);
   if (!parsed.success) {
     const tooLong = parsed.error.issues.some(

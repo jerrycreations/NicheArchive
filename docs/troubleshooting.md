@@ -2,6 +2,7 @@
 
 The failures most likely to happen, what the app says when they do, and what to do about them. The messages in quotes are what the app shows; the full error is always in the server log (Vercel → Project → **Logs**, or the terminal running `npm run dev`).
 
+- [Can't sign in](#cant-sign-in)
 - [Captions come back empty on Vercel](#captions-come-back-empty-on-vercel)
 - [YouTube's daily quota is used up](#youtubes-daily-quota-is-used-up)
 - [Gemini's rate limits and daily allowance](#geminis-rate-limits-and-daily-allowance)
@@ -10,6 +11,14 @@ The failures most likely to happen, what the app says when they do, and what to 
 - [Supabase paused the database](#supabase-paused-the-database)
 - [A video is stuck processing](#a-video-is-stuck-processing)
 - [Local development](#local-development)
+
+## Can't sign in
+
+**What you see:** the sign-in page says "That code isn't right. 3 tries left." or "Too many wrong codes. Try again in 42 minutes." Elsewhere, something you do says "You've been signed out. Reload the page and enter your code."
+
+**Why:** each IP address gets 5 tries at a code, and a wrong fifth one locks it out for an hour. A device is signed out after 30 days, when its person's code changes in `APP_PASSCODES`, when they're removed from it, or when `AUTH_SECRET` changes. Vercel only sees new values after a redeploy, so a code changed in Vercel but not redeployed still gets refused.
+
+**What to do:** check the code against `APP_PASSCODES` in `.env.local` or in Vercel's environment variables. The code is everything after the name's colon, with spaces around it trimmed. To lift a lockout early, run `delete from unlock_attempts;` in Supabase's SQL editor. If the page says it couldn't check your code, the database is probably paused (see [Supabase paused the database](#supabase-paused-the-database)).
 
 ## Captions come back empty on Vercel
 

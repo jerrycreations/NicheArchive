@@ -1,7 +1,9 @@
 import { after } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { verifySessionToken } from "@/lib/auth/session";
 import { claimForProcessing, getVideoByYoutubeId } from "@/lib/db/queries/videos";
 import type { VideoRow } from "@/lib/db/types";
+import { SIGNED_OUT } from "@/lib/errors";
 import { processVideoTranscript } from "@/lib/transcript/pipeline";
 import { POST } from "./route";
 
@@ -14,6 +16,9 @@ vi.mock("@/lib/db/queries/videos", () => ({
   claimForProcessing: vi.fn(),
 }));
 vi.mock("@/lib/transcript/pipeline", () => ({ processVideoTranscript: vi.fn() }));
+// Every request carries a cookie; verifySessionToken decides who, if anyone, it's for.
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "token" }) }) }));
+vi.mock("@/lib/auth/session", () => ({ SESSION_COOKIE: "na_session", verifySessionToken: vi.fn() }));
 
 const ID = "dQw4w9WgXcQ";
 const CLAIMED_AT = new Date("2026-09-24T12:00:00.123Z");
@@ -38,11 +43,20 @@ async function expectOutcome(response: Response, status: number, outcome: string
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(verifySessionToken).mockResolvedValue({ person: "Alex" });
   vi.mocked(getVideoByYoutubeId).mockResolvedValue(video("pending"));
   vi.mocked(claimForProcessing).mockResolvedValue(CLAIMED_AT);
 });
 
 describe("POST /api/transcripts/process", () => {
+  it("answers a signed-out device with 401 and does nothing", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    const response = await post({ youtubeId: ID });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: SIGNED_OUT });
+    expect(claimForProcessing).not.toHaveBeenCalled();
+  });
+
   it("claims the video, answers 202 and does the work after the response", async () => {
     await expectOutcome(await post({ youtubeId: ID }), 202, "started");
     expect(claimForProcessing).toHaveBeenCalledWith(video("pending").id, expect.any(Date));

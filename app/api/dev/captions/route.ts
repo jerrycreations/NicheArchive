@@ -1,5 +1,6 @@
 // Throwaway caption spike (plan Step 5); Step 48 deletes it.
 import { z } from "zod";
+import { withSession } from "@/lib/auth/require-session";
 import {
   fetchCaptions,
   type CaptionFailureReason,
@@ -37,17 +38,7 @@ export type CaptionProbeResponse = {
   rows: CaptionProbeRow[];
 };
 
-export async function POST(request: Request) {
-  // The app has no sign-in, and Vercel's Deployment Protection covers preview
-  // URLs but not the production domain. Off in production, so strangers can't
-  // make the server fetch YouTube for them.
-  if (process.env.VERCEL_ENV === "production") {
-    return Response.json(
-      { error: "The caption spike is off in production. Use a preview deployment." },
-      { status: 404 },
-    );
-  }
-
+export const POST = withSession(async (_session, request: Request) => {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json(
@@ -67,7 +58,7 @@ export async function POST(request: Request) {
     region: process.env.VERCEL_REGION ?? null,
     rows,
   } satisfies CaptionProbeResponse);
-}
+});
 
 async function probe(input: string): Promise<CaptionProbeRow> {
   const row: CaptionProbeRow = {

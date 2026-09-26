@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { cache } from "react";
 import { ChatView } from "@/components/chats/chat-view";
 import { DatabaseUnavailable } from "@/components/common/error-state";
+import { pageSession } from "@/lib/auth/require-session";
 import { toUIMessages } from "@/lib/chat/messages";
 import { UNTITLED_CHAT } from "@/lib/chat/modes";
 import { citedYoutubeIds } from "@/lib/chat/sources";
@@ -13,10 +14,12 @@ import { existingYoutubeIds } from "@/lib/db/queries/videos";
 import { unlessDatabaseDown } from "@/lib/errors";
 import { chatIdSchema } from "@/lib/validation/chat";
 
-// Shared by the metadata and the page within one request.
-const loadChat = cache(async (id: string) =>
-  chatIdSchema.safeParse(id).success ? getChat(id) : null,
-);
+// Shared by the metadata and the page within one request. Someone else's
+// chat is not found, like one that doesn't exist.
+const loadChat = cache(async (id: string) => {
+  const { person } = await pageSession();
+  return chatIdSchema.safeParse(id).success ? getChat(id, person) : null;
+});
 
 export async function generateMetadata({ params }: PageProps<"/chats/[id]">): Promise<Metadata> {
   const { id } = await params;

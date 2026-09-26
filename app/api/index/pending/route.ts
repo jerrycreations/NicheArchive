@@ -1,5 +1,6 @@
 import { aiErrorText, classifyAiError } from "@/lib/ai/errors";
 import { embeddingModelId } from "@/lib/ai/models";
+import { withSession } from "@/lib/auth/require-session";
 import { listIndexCandidates } from "@/lib/db/queries/videos";
 import type { IndexPendingResponse } from "@/lib/search/index-types";
 
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
  * every ready video; otherwise only those never indexed, indexed with
  * another embedding model, or whose last try failed.
  */
-export async function GET(request: Request) {
+export const GET = withSession(async (_session, request: Request) => {
   const all = new URL(request.url).searchParams.get("all") === "1";
 
   let model: string;
@@ -27,7 +28,7 @@ export async function GET(request: Request) {
     console.error("GET /api/index/pending failed:", error);
     return respond({ error: "Couldn't list the videos to index. Try again." }, 500);
   }
-}
+});
 
 function respond(body: IndexPendingResponse, status: number): Response {
   return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });

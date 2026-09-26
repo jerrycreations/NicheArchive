@@ -2,12 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { actionError, unexpectedError, type ActionError } from "@/lib/actions/result";
+import { getSession } from "@/lib/auth/require-session";
 import { LONG_VIDEO_WARNING_SECONDS } from "@/lib/constants";
 import {
   deleteVideoByYoutubeId,
   getVideoByYoutubeId,
   insertVideo,
 } from "@/lib/db/queries/videos";
+import { SIGNED_OUT } from "@/lib/errors";
 import {
   addVideoInputSchema,
   youtubeIdSchema,
@@ -32,6 +34,7 @@ export type DeleteVideoResult = { kind: "deleted" } | ActionError;
  * doesn't fetch the transcript; the client starts that after `added`.
  */
 export async function addVideo(input: AddVideoInput): Promise<AddVideoResult> {
+  if (!(await getSession())) return actionError(SIGNED_OUT);
   const parsed = addVideoInputSchema.safeParse(input);
   if (!parsed.success) return { kind: "invalid_url", reason: "not_youtube" };
   const url = parseYouTubeUrl(parsed.data.url);
@@ -93,6 +96,7 @@ async function saveVideo(youtubeId: string, confirmLong: boolean): Promise<AddVi
  * it. Library answers that cited it keep their saved sources.
  */
 export async function deleteVideo(youtubeId: string): Promise<DeleteVideoResult> {
+  if (!(await getSession())) return actionError(SIGNED_OUT);
   const parsed = youtubeIdSchema.safeParse(youtubeId);
   if (!parsed.success) return actionError("That isn't a saved video.");
 

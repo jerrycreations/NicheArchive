@@ -70,6 +70,15 @@ export const MAX_CHAT_TITLE_CHARS = 80;
  */
 export const MAX_LIBRARY_CONTEXT_CHARS = 200_000;
 
+/** A device stays signed in this long after entering a code. */
+export const SESSION_MAX_AGE_DAYS = 30;
+
+/** Codes one IP address can try before it's locked out. */
+export const UNLOCK_MAX_ATTEMPTS = 5;
+
+/** How long the last wrong try locks an IP address out, and how long earlier ones count. */
+export const UNLOCK_LOCKOUT_MINUTES = 60;
+
 /** Processing that hasn't finished after this long is shown as failed, with a retry. */
 export const STALE_PROCESSING_MINUTES = 6;
 

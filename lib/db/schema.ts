@@ -111,6 +111,8 @@ export const chats = pgTable(
     title: text("title"),
     mode: chatModeEnum("mode").notNull(),
     videoId: uuid("video_id").references(() => videos.id, { onDelete: "cascade" }),
+    // The name from APP_PASSCODES of whoever started it. Only they see it.
+    owner: text("owner").notNull(),
     createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -119,7 +121,7 @@ export const chats = pgTable(
       "chats_video_id_matches_mode",
       sql`(${t.mode} = 'video') = (${t.videoId} is not null)`,
     ),
-    index("chats_updated_at_idx").on(t.updatedAt),
+    index("chats_owner_updated_at_idx").on(t.owner, t.updatedAt),
     index("chats_video_id_idx").on(t.videoId),
   ],
 ).enableRLS();
@@ -140,6 +142,16 @@ export const messages = pgTable(
   },
   (t) => [index("messages_chat_id_created_at_idx").on(t.chatId, t.createdAt)],
 ).enableRLS();
+
+// Codes tried on the unlock page, per IP address, for the attempt limit.
+export const unlockAttempts = pgTable("unlock_attempts", {
+  // A MAC of the IP address, so the table never holds the address itself.
+  clientKey: text("client_key").primaryKey(),
+  attempts: integer("attempts").notNull(),
+  windowStartedAt: timestamp("window_started_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+}).enableRLS();
 
 export const videosRelations = relations(videos, ({ many }) => ({
   chunks: many(transcriptChunks),

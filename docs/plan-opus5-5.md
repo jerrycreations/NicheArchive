@@ -24,7 +24,7 @@ The spec leaves these open. Change any of them here before generating code.
 - **Captions sit behind one module.** The caption library is used in a single adapter file so it can be swapped. When it returns nothing, the pipeline moves on to the next source. No workaround is added, as the spec's Risks section decides.
 - **Thumbnails skip Vercel image optimization** (`unoptimized`). YouTube already serves sized JPEGs, and this keeps the Hobby image quota untouched.
 - **Testing.** Each step that adds logic writes Vitest unit tests for it. AI calls are tested with the AI SDK's mock models. The SQL is tested against PGlite with its vector extension. A Playwright smoke test is optional.
-- **No passcode (changed 2026-09-24).** Section 4's shared passcode was built and then removed at the user's request, because unlocking got in the way during development. The site is unlisted (`robots.txt` and `noindex` metadata) and open to anyone with its URL. Server actions and route handlers don't check a session, and `APP_PASSCODE`, `AUTH_SECRET` and `SESSION_MAX_AGE_DAYS` are gone. Only the cron route checks a secret (`CRON_SECRET`), and the caption spike route answers `404` in production.
+- **Per-person codes (changed 2026-09-25).** Section 4's shared passcode was built, then removed on 2026-09-24 because unlocking got in the way during development, which left the site open to anyone with its URL. On 2026-09-25 the user brought sign-in back as Section 12, with one code per person: `APP_PASSCODES` lists `Name:code` pairs, and the code alone signs someone in, with no registering or username. Each IP address gets 5 tries, then an hour's lockout. Chats belong to whoever started them; videos, search and export stay shared. Every server action and route handler checks the session again, the cron route checks `CRON_SECRET`, and the caption spike runs on any signed-in deployment. The notes in Sections 6 to 11 that say a step checks no session describe the app before Section 12.
 
 ---
 
@@ -285,7 +285,7 @@ The spec leaves these open. Change any of them here before generating code.
 
 ## Section 4: Access
 
-**Removed on 2026-09-24.** Steps 11 and 12 were built, then deleted at the user's request (see "No passcode" in the decisions above). `proxy.ts`, the `/unlock` page and action, `lib/auth/` and their tests are gone. The no-indexing half of Step 12 stays: `app/robots.ts` and the root layout's `robots` metadata. The spike route's production `404` is back, so the caption spike runs on a preview deployment again. The notes below record what was built.
+**Removed on 2026-09-24, and brought back per person on 2026-09-25 in [Section 12](#section-12-per-person-codes).** Steps 11 and 12 were built, then deleted at the user's request, because unlocking got in the way during development. Section 12 restored their files from git (`f2ceb57^`) and reworked them for one code per person. The notes below record what was first built.
 
 - [x] Step 11: Passcode session library
   - **Task**: Write the shared-passcode session using Web Crypto only, so it runs in any runtime.
@@ -1430,3 +1430,67 @@ The spec leaves these open. Change any of them here before generating code.
     - `docs/troubleshooting.md` covers the plan's seven failures, plus local development: the `next dev` database hang, the IPv6-only Direct connection host, stale route types and one dev server per folder.
     - `.env.example` already listed the final keys; its header now says which ones Vercel needs.
     - The deployment steps are the user's: Vercel variables, a real video end to end, and the spike's Deployed column.
+
+---
+
+## Section 12: Per-person codes
+
+Added on 2026-09-25, after every earlier section was done. The user wanted sign-in back, both to keep strangers out and so chats could belong to someone. Each person gets their own code in `.env`; there's no registering and no username. Steps 14 to 51 were built with no sign-in at all, so none of their actions or routes checked a session, and this section adds that everywhere.
+
+- [x] Step 52: One code per person
+  - **Task**: Restore Section 4's `lib/auth/`, `proxy.ts`, unlock page and action from `f2ceb57^`, and make them per person.
+    - `APP_PASSCODES` is `Name:code` pairs separated by commas. The env schema parses it into `{ name, code }[]` and rejects a missing colon, a blank name or code, a code under 8 characters, a name listed twice (ignoring case) and two people with one code. Its messages name people but never show a code.
+    - `verifyPasscode` returns the name whose code was typed, or null. It MACs the input once and checks it against every code without stopping at a match.
+    - The session payload gains `sub`, the name. `pv` becomes per person, so changing one person's code signs out only their devices, and removing someone signs them out.
+    - An account menu in the top bar shows who is signed in and has **Sign out**.
+  - **Files**:
+    - `lib/env.ts`, `lib/constants.ts`: `APP_PASSCODES`, `AUTH_SECRET`, `SESSION_MAX_AGE_DAYS`
+    - `lib/auth/crypto.ts`, `lib/auth/next-path.ts`: restored unchanged
+    - `lib/auth/passcode.ts`, `lib/auth/session.ts`, `lib/auth/require-session.ts`: per person
+    - `proxy.ts`, `app/unlock/page.tsx`, `components/auth/unlock-form.tsx`, `app/actions/auth.ts`: restored and reworded
+    - `components/layout/account-menu.tsx`, `components/layout/mobile-nav.tsx`, `components/layout/top-bar.tsx`, `app/(app)/layout.tsx`, `app/not-found.tsx`: the account menu
+  - **User Instructions**: Add `APP_PASSCODES` and `AUTH_SECRET` to `.env.local` and to Vercel for Production and Preview, then redeploy.
+  - **Done with a simpler session API and an icon-only account menu**:
+    - `require-session.ts` has `getSession()` (the session or null), `pageSession()` (redirects to `/unlock`) and `withSession(handler)`, which now passes the session as the handler's first argument. Section 4's throwing `requireSession()` and `UnauthorizedError` aren't needed any more.
+    - Signed-out API requests get `401` with `{ error: SIGNED_OUT }` ("You've been signed out. Reload the page and enter your code."), which the existing clients already show.
+    - From `md`, the account menu is a person icon beside the theme toggle. Below `md`, "Signed in as …" and **Sign out** sit at the bottom of `MobileNav` instead (`AccountMenuItems` is shared), because a fourth icon cut the name to "NicheA…" on 320px phones.
+    - The global `not-found.tsx` reads the session itself, since it sits outside `(app)`.
+
+- [x] Step 53: 5 tries, then an hour's lockout
+  - **Task**: Limit code guesses per IP address in Postgres, since Vercel's function instances share no memory.
+    - The `unlock_attempts` table holds `client_key`, an HMAC of the IP address (label `unlock-client`), with `attempts` and `window_started_at`.
+    - `reserveUnlockAttempt` counts a try before its code is checked, in one `insert … on conflict do update`, so tries sent together can't get past the limit. Tries count for an hour from the first. The fifth restarts the hour, so a wrong fifth try locks the address out for a full hour from then.
+    - A right code clears the count. The daily cron deletes rows over a day old.
+  - **Files**:
+    - `lib/db/schema.ts`, `drizzle/0003_per_person_codes.sql`: the table
+    - `lib/db/queries/unlock-attempts.ts`: reserve, clear and clean up
+    - `lib/auth/client-key.ts`: the address from `x-real-ip` or `x-forwarded-for`, which Vercel overwrites
+    - `app/actions/auth.ts`: the limit and its messages
+    - `app/api/cron/ping/route.ts`: the cleanup
+  - **Done with these messages**: "That code isn't right. 3 tries left.", then "That code isn't right, and that was the last try. Try again in an hour.", then "Too many wrong codes. Try again in 42 minutes." An empty code costs no try. If the count can't be read, nobody gets in: the page shows the database message, or "Couldn't check your code. Try again."
+
+- [x] Step 54: Chats belong to a person
+  - **Task**: Save the signed-in name on each chat, and show people only their own chats.
+    - `chats.owner` is required. Migration `0003` gives every earlier chat to `Jerry`, the first person in `APP_PASSCODES`. `chats_updated_at_idx` becomes `(owner, updated_at)`.
+    - `listChats`, `listChatsForVideo`, `updateChatTitle` and `deleteChatById` take the owner. `getChat` takes it optionally, and `createChatIfMissing` treats someone else's chat ID as a conflict.
+    - The Chats page, a video's chat column and a chat's page show only your own chats. Someone else's chat link shows "Chat not found", and `/api/chat` answers `404` for it without saving anything.
+    - Videos, library search and export stay shared. The delete-video dialog still counts everyone's chats, since deleting a video deletes all of them.
+  - **Files**:
+    - `lib/db/queries/chats.ts`, `lib/chat/respond.ts`, `app/api/chat/route.ts`
+    - `app/(app)/chats/layout.tsx`, `app/(app)/chats/[id]/page.tsx`, `app/(app)/videos/[youtubeId]/page.tsx`
+    - `app/actions/chats.ts`
+
+- [x] Step 55: Every action and route behind the session
+  - **Task**: Check the session in everything the proxy covers, in case a matcher change leaves something out.
+    - `addVideo`, `deleteVideo`, `savePastedTranscript`, `renameChat` and `deleteChat` return `SIGNED_OUT` without a session.
+    - These routes are wrapped in `withSession`: `/api/chat`, `/api/export`, `/api/export/[youtubeId]`, `/api/index/pending`, `/api/index/[youtubeId]`, `/api/transcripts/process`, `/api/videos/status` and `/api/dev/captions`.
+    - Only `/api/cron/ping` stays open, with its `CRON_SECRET` check.
+    - The caption spike route goes back to needing a session instead of answering `404` in production, so its Deployed column can be filled from any deployment.
+
+- [x] Step 56: Tests and documentation
+  - **Task**: Restore and adapt Section 4's tests, add a signed-out case to every action and route test, and cover the limit and ownership against PGlite. Update the README, `.env.example`, the spec's Access section, `docs/troubleshooting.md` and `docs/caption-spike.md`.
+  - **Files**:
+    - `lib/auth/*.test.ts`, `proxy.test.ts`, `app/actions/auth.test.ts`, `lib/env.test.ts`
+    - the action and route tests under `app/`
+    - `tests/db/unlock-attempts.test.ts`, `tests/db/chat-queries.test.ts`, `tests/db/schema.test.ts`
+  - **Done with the session mocked at its source**: the action and route tests mock `next/headers` and `verifySessionToken`, so the real `getSession` and `withSession` run in every test. The PGlite tests run the limiter's real SQL, including twelve tries sent together.

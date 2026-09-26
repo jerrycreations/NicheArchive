@@ -1,8 +1,9 @@
 // Daily keep-alive (vercel.json), so Supabase's free tier doesn't pause the
-// database after a week without activity.
+// database after a week without activity. It also clears out old unlock tries.
 import { createHash, timingSafeEqual } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
+import { deleteStaleUnlockAttempts } from "@/lib/db/queries/unlock-attempts";
 import { envPick } from "@/lib/env";
 import { serverErrorResponse } from "@/lib/errors";
 
@@ -18,6 +19,7 @@ export async function GET(request: Request) {
 
   try {
     await db().execute(sql`select 1`);
+    await deleteStaleUnlockAttempts();
   } catch (error) {
     // Still a failure, so the cron run shows as failed in Vercel.
     return serverErrorResponse("GET /api/cron/ping", error);

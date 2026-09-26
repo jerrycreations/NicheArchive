@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const execute = vi.fn();
 
+const deleteStaleUnlockAttempts = vi.fn();
+
 vi.mock("@/lib/db", () => ({ db: () => ({ execute }) }));
+vi.mock("@/lib/db/queries/unlock-attempts", () => ({ deleteStaleUnlockAttempts }));
 
 const SECRET = "cron-secret-for-tests";
 
@@ -17,6 +20,7 @@ async function loadGet() {
 
 beforeEach(() => {
   execute.mockReset();
+  deleteStaleUnlockAttempts.mockReset();
   vi.stubEnv("CRON_SECRET", SECRET);
 });
 
@@ -30,6 +34,7 @@ describe("GET /api/cron/ping", () => {
     const response = await GET(ping());
     expect(response.status).toBe(401);
     expect(execute).not.toHaveBeenCalled();
+    expect(deleteStaleUnlockAttempts).not.toHaveBeenCalled();
   });
 
   it("rejects the wrong secret", async () => {
@@ -45,7 +50,7 @@ describe("GET /api/cron/ping", () => {
     expect(response.status).toBe(401);
   });
 
-  it("queries the database once with the right secret", async () => {
+  it("queries the database and clears old unlock tries with the right secret", async () => {
     const GET = await loadGet();
     const response = await GET(ping(`Bearer ${SECRET}`));
     expect(response.status).toBe(200);
@@ -53,6 +58,7 @@ describe("GET /api/cron/ping", () => {
     expect(body.ok).toBe(true);
     expect(Number.isNaN(Date.parse(body.at))).toBe(false);
     expect(execute).toHaveBeenCalledTimes(1);
+    expect(deleteStaleUnlockAttempts).toHaveBeenCalledTimes(1);
   });
 
   it("works while unrelated variables are still blank", async () => {

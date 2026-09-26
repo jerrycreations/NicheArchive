@@ -4,6 +4,7 @@ import { ChatList, ChatListSkeleton } from "@/components/chats/chat-list";
 import { ChatListDrawer } from "@/components/chats/chat-list-drawer";
 import { DatabaseUnavailable } from "@/components/common/error-state";
 import { Skeleton } from "@/components/ui/skeleton";
+import { pageSession } from "@/lib/auth/require-session";
 import { listChats } from "@/lib/db/queries/chats";
 import { unlessDatabaseDown } from "@/lib/errors";
 
@@ -32,7 +33,8 @@ export default function ChatsLayout({ children }: LayoutProps<"/chats">) {
 async function ChatsNav() {
   // Database reads don't make a page dynamic on their own (see the library page).
   await connection();
-  const loaded = await unlessDatabaseDown(listChats);
+  const { person } = await pageSession();
+  const loaded = await unlessDatabaseDown(() => listChats(person));
   // The open chat or new chat beside it says the same, so on phones the
   // drawer's row stays empty rather than repeating it.
   if (!loaded.ok) {

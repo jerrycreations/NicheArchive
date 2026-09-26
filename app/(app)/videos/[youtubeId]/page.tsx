@@ -9,6 +9,7 @@ import { TranscriptPanel } from "@/components/video/transcript-panel";
 import { VideoChat } from "@/components/video/video-chat";
 import { VideoMeta } from "@/components/video/video-meta";
 import { VideoPageLayout } from "@/components/video/video-page-layout";
+import { pageSession } from "@/lib/auth/require-session";
 import { toUIMessages } from "@/lib/chat/messages";
 import { listChatsForVideo } from "@/lib/db/queries/chats";
 import { listMessages } from "@/lib/db/queries/messages";
@@ -34,12 +35,13 @@ export async function generateMetadata({
 export default async function VideoPage({ params, searchParams }: PageProps<"/videos/[youtubeId]">) {
   // Database reads don't make a page dynamic on their own (see the library page).
   await connection();
+  const { person } = await pageSession();
   const { youtubeId } = await params;
   const loaded = await unlessDatabaseDown(async () => {
     const video = await loadVideo(youtubeId);
     if (!video) return null;
-    // The chat column opens the most recent chat.
-    const chats = await listChatsForVideo(video.id);
+    // The chat column opens your most recent chat about it.
+    const chats = await listChatsForVideo(video.id, person);
     const latestMessages = chats[0] ? toUIMessages(await listMessages(chats[0].id)) : [];
     return { video, chats, latestMessages };
   });

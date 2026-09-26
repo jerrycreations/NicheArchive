@@ -5,12 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiConfigError } from "@/lib/ai/errors";
 import { chatModel } from "@/lib/ai/models";
 import { generateChatTitle } from "@/lib/ai/title";
+import { verifySessionToken } from "@/lib/auth/session";
 import { prepareLibraryAnswer } from "@/lib/chat/library";
 import { NO_MATCH_REPLY } from "@/lib/chat/sources";
 import { getChat, setChatTitleIfEmpty } from "@/lib/db/queries/chats";
 import { listMessages, saveExchange } from "@/lib/db/queries/messages";
 import { getVideoById, getVideoByYoutubeId } from "@/lib/db/queries/videos";
 import type { ChatWithVideo, MessageRow, VideoRow } from "@/lib/db/types";
+import { SIGNED_OUT } from "@/lib/errors";
 import { POST } from "./route";
 
 vi.mock("next/server", async (importOriginal) => ({
@@ -18,6 +20,9 @@ vi.mock("next/server", async (importOriginal) => ({
   after: vi.fn(),
 }));
 vi.mock("@/lib/ai/models", () => ({ chatModel: vi.fn() }));
+// Every request carries a cookie; verifySessionToken decides who, if anyone, it's for.
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "token" }) }) }));
+vi.mock("@/lib/auth/session", () => ({ SESSION_COOKIE: "na_session", verifySessionToken: vi.fn() }));
 vi.mock("@/lib/ai/title", () => ({ generateChatTitle: vi.fn() }));
 vi.mock("@/lib/chat/library", () => ({ prepareLibraryAnswer: vi.fn() }));
 vi.mock("@/lib/db/queries/chats", () => ({ getChat: vi.fn(), setChatTitleIfEmpty: vi.fn() }));
@@ -117,6 +122,7 @@ async function expectError(response: Response, status: number, error: string) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(verifySessionToken).mockResolvedValue({ person: "Alex" });
   vi.mocked(getChat).mockResolvedValue(null);
   vi.mocked(getVideoByYoutubeId).mockResolvedValue(video);
   vi.mocked(getVideoById).mockResolvedValue(video);
@@ -148,7 +154,7 @@ describe("POST /api/chat", () => {
     });
 
     expect(saveExchange).toHaveBeenCalledExactlyOnceWith(
-      { id: CHAT_ID, mode: "video", videoId: VIDEO_ID },
+      { id: CHAT_ID, mode: "video", videoId: VIDEO_ID, owner: "Alex" },
       { id: MESSAGE_ID, content: "Why does bread rise?" },
       { id: expect.any(String), content: "Yeast eats sugar [0:42]." },
     );
@@ -164,6 +170,7 @@ describe("POST /api/chat", () => {
       id: CHAT_ID,
       mode: "video",
       videoId: VIDEO_ID,
+      owner: "Alex",
       title: "Why bread rises",
     } as ChatWithVideo);
     vi.mocked(listMessages).mockResolvedValue([
@@ -180,11 +187,33 @@ describe("POST /api/chat", () => {
     expect(system.content).toContain("Yeast eats sugar.");
     expect(rest.map((message) => message.role)).toEqual(["user", "assistant", "user"]);
     expect(saveExchange).toHaveBeenCalledWith(
-      { id: CHAT_ID, mode: "video", videoId: VIDEO_ID },
+      { id: CHAT_ID, mode: "video", videoId: VIDEO_ID, owner: "Alex" },
       expect.anything(),
       expect.anything(),
     );
     expect(generateChatTitle).not.toHaveBeenCalled();
+  });
+
+  it("answers a signed-out device with 401 before reading anything", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    await expectError(await post(ask("Why does bread rise?")), 401, SIGNED_OUT);
+    expect(getChat).not.toHaveBeenCalled();
+    expect(chatModel).not.toHaveBeenCalled();
+  });
+
+  it("treats someone else's chat as missing and saves nothing", async () => {
+    vi.mocked(getChat).mockResolvedValue({
+      id: CHAT_ID,
+      mode: "video",
+      videoId: VIDEO_ID,
+      owner: "Sam",
+      title: "Sam's question",
+    } as ChatWithVideo);
+    useModel(answering("Hello."));
+    await expectError(await post(ask("Show me Sam's chat")), 404, "This chat doesn't exist.");
+    expect(listMessages).not.toHaveBeenCalled();
+    expect(chatModel).not.toHaveBeenCalled();
+    expect(saveExchange).not.toHaveBeenCalled();
   });
 
   it("answers a general chat without a transcript", async () => {
@@ -194,7 +223,7 @@ describe("POST /api/chat", () => {
     expect(model.doStreamCalls[0].prompt[0].content).toContain("no transcripts attached");
     expect(getVideoByYoutubeId).not.toHaveBeenCalled();
     expect(saveExchange).toHaveBeenCalledWith(
-      { id: CHAT_ID, mode: "general", videoId: null },
+      { id: CHAT_ID, mode: "general", videoId: null, owner: "Alex" },
       expect.anything(),
       expect.anything(),
     );
@@ -269,7 +298,7 @@ describe("POST /api/chat", () => {
       expect(body).toContain(`"delta":${JSON.stringify(NO_MATCH_REPLY)}`);
       expect(body).toContain('"finishReason":"stop"');
       expect(saveExchange).toHaveBeenCalledExactlyOnceWith(
-        { id: CHAT_ID, mode: "library", videoId: null },
+        { id: CHAT_ID, mode: "library", videoId: null, owner: "Alex" },
         { id: MESSAGE_ID, content: "What is sourdough?" },
         { id: expect.any(String), content: NO_MATCH_REPLY, sources: noMatch },
       );
@@ -298,7 +327,7 @@ describe("POST /api/chat", () => {
       // One start, carrying the saved answer's ID.
       expect(body.match(/"type":"start"/g)).toHaveLength(1);
       expect(saveExchange).toHaveBeenCalledExactlyOnceWith(
-        { id: CHAT_ID, mode: "library", videoId: null },
+        { id: CHAT_ID, mode: "library", videoId: null, owner: "Alex" },
         { id: MESSAGE_ID, content: "Why does bread rise?" },
         { id: expect.any(String), content: "Yeast eats sugar [1 @ 0:42].", sources: videoSources },
       );
@@ -311,6 +340,7 @@ describe("POST /api/chat", () => {
         id: CHAT_ID,
         mode: "library",
         videoId: null,
+        owner: "Alex",
         title: "Bread",
       } as ChatWithVideo);
       const history = [

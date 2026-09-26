@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { withSession } from "@/lib/auth/require-session";
 import { claimForProcessing, getVideoByYoutubeId } from "@/lib/db/queries/videos";
 import { serverErrorResponse } from "@/lib/errors";
 import { processVideoTranscript } from "@/lib/transcript/pipeline";
@@ -18,7 +19,7 @@ export const maxDuration = 300;
  * the work itself runs after the response. Calling again is harmless, since
  * only one run can hold the claim, and it's how Retry works.
  */
-export async function POST(request: Request) {
+export const POST = withSession(async (_session, request: Request) => {
   const parsed = processRequestSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
     return Response.json(
@@ -40,7 +41,7 @@ export async function POST(request: Request) {
   } catch (error) {
     return serverErrorResponse("POST /api/transcripts/process", error);
   }
-}
+});
 
 function respond(outcome: ProcessOutcome, status: number): Response {
   return Response.json({ outcome } satisfies ProcessResponse, { status });

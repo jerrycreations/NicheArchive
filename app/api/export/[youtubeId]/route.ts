@@ -1,3 +1,4 @@
+import { withSession } from "@/lib/auth/require-session";
 import { getVideoByYoutubeId } from "@/lib/db/queries/videos";
 import { serverErrorResponse, type ErrorBody } from "@/lib/errors";
 import { contentDisposition, exportFilename } from "@/lib/export/filenames";
@@ -11,32 +12,34 @@ export const dynamic = "force-dynamic";
  * One video's transcript as a .txt download, in the same format and with the
  * same kind of name as the files in "Download all".
  */
-export async function GET(_request: Request, ctx: RouteContext<"/api/export/[youtubeId]">) {
-  const { youtubeId } = await ctx.params;
-  if (!youtubeIdSchema.safeParse(youtubeId).success) {
-    return fail("That isn't a YouTube video ID.", 400);
-  }
+export const GET = withSession(
+  async (_session, _request: Request, ctx: RouteContext<"/api/export/[youtubeId]">) => {
+    const { youtubeId } = await ctx.params;
+    if (!youtubeIdSchema.safeParse(youtubeId).success) {
+      return fail("That isn't a YouTube video ID.", 400);
+    }
 
-  let video;
-  try {
-    video = await getVideoByYoutubeId(youtubeId);
-  } catch (error) {
-    return serverErrorResponse(`GET /api/export/${youtubeId}`, error);
-  }
-  if (!video) return fail("This video isn't in the library anymore.", 404);
-  if (video.status !== "ready" || !video.transcriptSegments) {
-    return fail("This video's transcript isn't ready yet.", 409);
-  }
+    let video;
+    try {
+      video = await getVideoByYoutubeId(youtubeId);
+    } catch (error) {
+      return serverErrorResponse(`GET /api/export/${youtubeId}`, error);
+    }
+    if (!video) return fail("This video isn't in the library anymore.", 404);
+    if (video.status !== "ready" || !video.transcriptSegments) {
+      return fail("This video's transcript isn't ready yet.", 409);
+    }
 
-  const text = formatTranscriptFile({ ...video, transcriptSegments: video.transcriptSegments });
-  return new Response(text, {
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": contentDisposition(exportFilename(video)),
-      "Cache-Control": "no-store",
-    },
-  });
-}
+    const text = formatTranscriptFile({ ...video, transcriptSegments: video.transcriptSegments });
+    return new Response(text, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Content-Disposition": contentDisposition(exportFilename(video)),
+        "Cache-Control": "no-store",
+      },
+    });
+  },
+);
 
 function fail(message: string, status: number): Response {
   return Response.json({ error: message } satisfies ErrorBody, {

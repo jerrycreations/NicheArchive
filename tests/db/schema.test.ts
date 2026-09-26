@@ -82,7 +82,7 @@ describe("deleting a video", () => {
       embedding: embedding({ 1: 1 }),
     });
     const chatId = crypto.randomUUID();
-    await test.raw.insert(chats).values({ id: chatId, mode: "video", videoId });
+    await test.raw.insert(chats).values({ id: chatId, mode: "video", videoId, owner: "Alex" });
     await test.raw.insert(messages).values([
       { chatId, role: "user", content: "What's this about?" },
       { chatId, role: "assistant", content: "Hello." },
@@ -99,7 +99,7 @@ describe("deleting a video", () => {
     const kept = await insertTestVideo(test.raw);
     const gone = await insertTestVideo(test.raw);
     const chatId = crypto.randomUUID();
-    await test.raw.insert(chats).values({ id: chatId, mode: "video", videoId: kept.id });
+    await test.raw.insert(chats).values({ id: chatId, mode: "video", videoId: kept.id, owner: "Alex" });
 
     await test.raw.delete(videos).where(eq(videos.id, gone.id));
 
@@ -119,7 +119,7 @@ describe("the chat mode check", () => {
 
   it("rejects a video chat without a video", async () => {
     const message = await failure(
-      test.raw.insert(chats).values({ id: crypto.randomUUID(), mode: "video", videoId: null }),
+      test.raw.insert(chats).values({ id: crypto.randomUUID(), mode: "video", videoId: null, owner: "Alex" }),
     );
     expect(message).toContain("chats_video_id_matches_mode");
   });
@@ -127,15 +127,15 @@ describe("the chat mode check", () => {
   it("rejects a library chat tied to a video", async () => {
     const { id: videoId } = await insertTestVideo(test.raw);
     const message = await failure(
-      test.raw.insert(chats).values({ id: crypto.randomUUID(), mode: "library", videoId }),
+      test.raw.insert(chats).values({ id: crypto.randomUUID(), mode: "library", videoId, owner: "Alex" }),
     );
     expect(message).toContain("chats_video_id_matches_mode");
   });
 
   it("accepts library and general chats without a video", async () => {
     await test.raw.insert(chats).values([
-      { id: crypto.randomUUID(), mode: "library", videoId: null },
-      { id: crypto.randomUUID(), mode: "general", videoId: null },
+      { id: crypto.randomUUID(), mode: "library", videoId: null, owner: "Alex" },
+      { id: crypto.randomUUID(), mode: "general", videoId: null, owner: "Alex" },
     ]);
   });
 });

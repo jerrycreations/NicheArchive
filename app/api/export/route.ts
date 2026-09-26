@@ -1,3 +1,4 @@
+import { withSession } from "@/lib/auth/require-session";
 import { countNotReady, listExportVideos } from "@/lib/db/queries/videos";
 import { serverErrorResponse } from "@/lib/errors";
 import { exportFilenames } from "@/lib/export/filenames";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
  * The body is streamed one file at a time: Vercel caps a function's response
  * at 4.5 MB unless it's streamed, and a few hundred transcripts can pass that.
  */
-export async function GET() {
+export const GET = withSession(async () => {
   let videos: ExportVideo[];
   let skipped: number;
   try {
@@ -51,4 +52,4 @@ export async function GET() {
       "Cache-Control": "no-store",
     },
   });
-}
+});

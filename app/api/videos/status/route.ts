@@ -1,3 +1,4 @@
+import { withSession } from "@/lib/auth/require-session";
 import { listVideoStatuses } from "@/lib/db/queries/videos";
 import { serverErrorResponse } from "@/lib/errors";
 import type { TranscriptStatusInfo } from "@/lib/transcript/status";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * still processing. Statuses are effective, so stalled processing reads as
  * failed. Videos that no longer exist are left out.
  */
-export async function GET(request: Request) {
+export const GET = withSession(async (_session, request: Request) => {
   const ids = statusIdsSchema.safeParse(new URL(request.url).searchParams.get("ids") ?? "");
   if (!ids.success) {
     return Response.json(
@@ -27,4 +28,4 @@ export async function GET(request: Request) {
     return serverErrorResponse("GET /api/videos/status", error);
   }
   return Response.json(statuses, { headers: { "Cache-Control": "no-store" } });
-}
+});

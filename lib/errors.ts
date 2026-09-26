@@ -53,6 +53,9 @@ export const YOUTUBE_ERROR_MESSAGES: Record<YouTubeErrorKind, string> = {
 /** Anything on the server that nobody planned for. The real error goes to the server log. */
 export const SERVER_PROBLEM = "Something went wrong on the server. Try again.";
 
+/** The request had no valid session cookie, say because it expired or a code changed. */
+export const SIGNED_OUT = "You've been signed out. Reload the page and enter your code.";
+
 /** The browser couldn't reach the server at all. */
 export const SERVER_UNREACHABLE = "Couldn't reach the server. Check your connection and try again.";
 

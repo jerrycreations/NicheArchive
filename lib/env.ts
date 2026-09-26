@@ -6,6 +6,44 @@ import { EMBEDDING_VECTOR_DIMENSIONS } from "@/lib/constants";
 const text = () =>
   z.string({ error: "is missing" }).trim().min(1, "is missing");
 
+/** Someone who can sign in: the name shown and saved on their chats, and their code. */
+export type Person = { name: string; code: string };
+
+const MIN_CODE_LENGTH = 8;
+
+// "Name:code,Name:code". Names can't hold a colon and codes can't hold a
+// comma. The messages name people but never show a code.
+const people = () =>
+  text().transform((value, ctx): Person[] => {
+    const list: Person[] = [];
+    for (const entry of value.split(",")) {
+      const colon = entry.indexOf(":");
+      const name = colon === -1 ? "" : entry.slice(0, colon).trim();
+      const code = colon === -1 ? "" : entry.slice(colon + 1).trim();
+      if (!name || !code) {
+        ctx.addIssue({ code: "custom", message: "must be Name:code pairs separated by commas" });
+        return z.NEVER;
+      }
+      if (code.length < MIN_CODE_LENGTH) {
+        ctx.addIssue({
+          code: "custom",
+          message: `needs a code of at least ${MIN_CODE_LENGTH} characters for ${name}`,
+        });
+        return z.NEVER;
+      }
+      if (list.some((person) => person.name.toLowerCase() === name.toLowerCase())) {
+        ctx.addIssue({ code: "custom", message: `lists ${name} twice` });
+        return z.NEVER;
+      }
+      if (list.some((person) => person.code === code)) {
+        ctx.addIssue({ code: "custom", message: "gives two people the same code" });
+        return z.NEVER;
+      }
+      list.push({ name, code });
+    }
+    return list;
+  });
+
 const envSchema = z.object({
   // Supabase transaction pooler (port 6543). DATABASE_MIGRATION_URL is read
   // only by drizzle-kit, so it isn't part of the runtime schema.
@@ -13,6 +51,8 @@ const envSchema = z.object({
     /^postgres(ql)?:\/\//,
     "must be a postgres:// connection string",
   ),
+  APP_PASSCODES: people(),
+  AUTH_SECRET: text().min(32, "must be at least 32 characters"),
   YOUTUBE_API_KEY: text(),
   GOOGLE_GENERATIVE_AI_API_KEY: text(),
   GEMINI_CHAT_MODEL: text(),
@@ -61,7 +101,7 @@ function parseEnv<T>(schema: z.ZodType<T>): T {
   const result = schema.safeParse(process.env);
   if (result.success) return result.data;
 
-  // Keep the first problem per key; a blank DATABASE_URL is "missing", not also "not a postgres:// string".
+  // Keep the first problem per key; a blank AUTH_SECRET is "missing", not also "too short".
   const problems = new Map<string, string>();
   for (const issue of result.error.issues) {
     const key = String(issue.path[0]);

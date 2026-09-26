@@ -1,16 +1,21 @@
 import { revalidatePath } from "next/cache";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { verifySessionToken } from "@/lib/auth/session";
 import {
   deleteVideoByYoutubeId,
   getVideoByYoutubeId,
   insertVideo,
 } from "@/lib/db/queries/videos";
 import type { VideoRow } from "@/lib/db/types";
+import { SIGNED_OUT } from "@/lib/errors";
 import { youTubeErrorMessage } from "@/lib/youtube/errors";
 import { fetchVideoMetadata, type VideoMetadata } from "@/lib/youtube/metadata";
 import { addVideo, deleteVideo } from "./videos";
 
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
+// Every request carries a cookie; verifySessionToken decides who, if anyone, it's for.
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: () => ({ value: "token" }) }) }));
+vi.mock("@/lib/auth/session", () => ({ SESSION_COOKIE: "na_session", verifySessionToken: vi.fn() }));
 vi.mock("@/lib/youtube/metadata", () => ({ fetchVideoMetadata: vi.fn() }));
 vi.mock("@/lib/db/queries/videos", () => ({
   getVideoByYoutubeId: vi.fn(),
@@ -40,6 +45,7 @@ function lookupReturns(changes: Partial<VideoMetadata>) {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(verifySessionToken).mockResolvedValue({ person: "Alex" });
   vi.mocked(getVideoByYoutubeId).mockResolvedValue(null);
   vi.mocked(fetchVideoMetadata).mockResolvedValue({ ok: true, video: metadata });
   vi.mocked(insertVideo).mockResolvedValue({ id: "7d3f7c52-5f1e-4a3b-9a57-2f1c7e4b8d10" });
@@ -52,6 +58,16 @@ afterEach(() => {
 });
 
 describe("addVideo", () => {
+  it("refuses a signed-out device without asking YouTube", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    expect(await addVideo({ url: LINK, confirmLong: false })).toEqual({
+      kind: "error",
+      message: SIGNED_OUT,
+    });
+    expect(getVideoByYoutubeId).not.toHaveBeenCalled();
+    expect(fetchVideoMetadata).not.toHaveBeenCalled();
+  });
+
   it("saves a new video as pending and revalidates the library", async () => {
     expect(await addVideo({ url: LINK })).toEqual({
       kind: "added",
@@ -183,6 +199,12 @@ describe("addVideo", () => {
 });
 
 describe("deleteVideo", () => {
+  it("refuses a signed-out device", async () => {
+    vi.mocked(verifySessionToken).mockResolvedValue(null);
+    expect(await deleteVideo(ID)).toEqual({ kind: "error", message: SIGNED_OUT });
+    expect(deleteVideoByYoutubeId).not.toHaveBeenCalled();
+  });
+
   it("deletes the video and revalidates the library", async () => {
     expect(await deleteVideo(ID)).toEqual({ kind: "deleted" });
     expect(deleteVideoByYoutubeId).toHaveBeenCalledExactlyOnceWith(ID);
